@@ -118,6 +118,12 @@ void send_to_openai_whisper() {
     return;
   }
 
+  Serial.printf("Free heap before Whisper HTTPS: %u bytes\n", ESP.getFreeHeap());
+  if (ESP.getFreeHeap() < 45000) {
+    Serial.println("ERROR: Not enough free heap for TLS connection. Try shorter recording.");
+    return;
+  }
+
   WiFiClientSecure secure_client;
   secure_client.setInsecure();
 

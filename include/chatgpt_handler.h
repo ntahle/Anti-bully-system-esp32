@@ -4,6 +4,7 @@
 #include <Arduino.h>
 #include <WiFi.h>
 #include <HTTPClient.h>
+#include <WiFiClientSecure.h>
 #include <ArduinoJson.h>
 
 extern const char* openai_gpt_url;
@@ -91,7 +92,7 @@ String parseChatGPTResponse(String response, int httpResponseCode) {
   Serial.println("Response Code: " + String(httpResponseCode));
   //Serial.println("Full Response: " + response);  // Debug: see entire response
 
-  DynamicJsonDocument doc(4096);
+  DynamicJsonDocument doc(2048);
   DeserializationError error = deserializeJson(doc, response);
   
   if (error) {
@@ -138,11 +139,15 @@ String sendToChatGPT(String message) {
   }
 
   HTTPClient http;
+  WiFiClientSecure secure_client;
+  secure_client.setInsecure();
+
   Serial.println("\n=== Sending to ChatGPT ===");
   Serial.println("Message: " + message);
+  Serial.printf("Free heap before ChatGPT HTTPS: %u bytes\n", ESP.getFreeHeap());
 
   // Build JSON with ArduinoJson so quotes/newlines are escaped safely.
-  DynamicJsonDocument payloadDoc(4096);
+  DynamicJsonDocument payloadDoc(2048);
   payloadDoc["model"] = chatgpt_model;
   payloadDoc["max_tokens"] = chatgpt_token.toInt();
   payloadDoc["temperature"] = 0.2;
@@ -159,7 +164,9 @@ String sendToChatGPT(String message) {
   String payload;
   serializeJson(payloadDoc, payload);
 
-  http.begin(openai_gpt_url);
+  http.begin(secure_client, openai_gpt_url);
+  http.setTimeout(30000);
+  http.setConnectTimeout(10000);
   http.addHeader("Content-Type", "application/json");
   http.addHeader("Authorization", "Bearer " + String(openai_api_key));
 

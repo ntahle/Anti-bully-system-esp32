@@ -143,6 +143,7 @@ void loop() {
     record_audio_from_microphone();
     
     String transcribed_text = convert_audio_to_text(); // Step 2: Convert audio to text
+    free_audio_memory(); // Free RAM before next HTTPS request (ChatGPT)
     
     // Step 3: Analyze text
     if (transcribed_text.length() > 0) {
@@ -173,8 +174,6 @@ void loop() {
       Serial.println(">>> Skipping ChatGPT analysis - No transcription available");
     }
     digitalWrite(ledBlink, LOW); 
-
-    free_audio_memory();// Step 4: Clean up memory
     
     pbcond = 1;
   }
