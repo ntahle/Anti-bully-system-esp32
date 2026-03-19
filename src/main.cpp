@@ -3,6 +3,7 @@
 #include <WebServer.h>
 #include <EEPROM.h>
 #include <String>
+#include <ArduinoJson.h>
 #include "handlers.h" //wifi config handlers
 #include "chatgpt_handler.h" //chatgpt analyser
 #include "audio_recorder.h" //mic 
@@ -82,6 +83,25 @@ String extractAnalysisLabel(String analysis_result) {
   if (lower.indexOf("uncertain") >= 0) return "uncertain";
   if (lower.indexOf("no") >= 0) return "no";
   return lower;
+}
+
+String buildSensorPayload(const String& transcription_text, const String& analysis_result) {
+  DynamicJsonDocument outerDoc(1024);
+  outerDoc["message"] = "Alert at Toilet L1";
+  outerDoc["transcription"] = transcription_text;
+
+  DynamicJsonDocument analysisDoc(768);
+  DeserializationError analysisErr = deserializeJson(analysisDoc, analysis_result);
+  if (!analysisErr) {
+    outerDoc["analysis"] = analysisDoc.as<JsonVariant>();
+  } else {
+    // Fallback to plain text if model returns non-JSON output.
+    outerDoc["analysis"] = analysis_result;
+  }
+
+  String payload;
+  serializeJson(outerDoc, payload);
+  return payload;
 }
 
 
@@ -181,7 +201,7 @@ void loop() {
           Serial.println(">>> ALERT: Bullying behavior detected!");
           bot.sendMessage(chatID, "ALERT: Bullying behavior detected in the latest transcription:\n\n\"" + transcribed_text + "\"\n\nAnalysis: " + analysis_result);
           
-          String sensorData = "{\"message\": \"Alert at Toilet L1\", \"transcription\": \"" + transcribed_text + "\", \"analysis\": \"" + analysis_result + "\"}"; 
+          String sensorData = buildSensorPayload(transcribed_text, analysis_result);
           if (publishViaAPI(topic_subs, sensorData)) {    //mqtt publish to EMQX Serverless API
             Serial.println(">>> Sensor data published successfully.");
           } else {

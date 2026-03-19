@@ -17,12 +17,21 @@ String parseChatGPTResponse(String response, int httpResponseCode) {
   Serial.println("Response Code: " + String(httpResponseCode));
   //Serial.println("Full Response: " + response);  // Debug: see entire response
 
-  DynamicJsonDocument doc(2048);
+  DynamicJsonDocument doc(4096);
   DeserializationError error = deserializeJson(doc, response);
   
   if (error) {
     Serial.println("ERROR: Failed to parse JSON");
     Serial.println("Error: " + String(error.c_str()));
+    Serial.println("Raw response: " + response);
+    return "";
+  }
+
+  if (doc.containsKey("error")) {
+    JsonObject err = doc["error"];
+    String errMsg = err["message"] | "Unknown API error";
+    String errType = err["type"] | "unknown";
+    Serial.println("OpenAI API Error (" + errType + "): " + errMsg);
     return "";
   }
 
@@ -58,8 +67,23 @@ String sendToChatGPT(String message) {
   Serial.println("\n=== Sending to ChatGPT ===");
   Serial.println("Message: " + message);
 
-  // json payload and gpt roles
-  String payload = "{\"model\": \"" + String(chatgpt_model) + "\", \"messages\": [{\"role\": \"system\", \"content\": \"" + String(chatgpt_system_prompt) + "\"}, {\"role\": \"user\", \"content\": \"" + message + "\"}], \"max_tokens\": " + chatgpt_token + ", \"temperature\": 0.2}";
+  // Build JSON with ArduinoJson so quotes/newlines are escaped safely.
+  DynamicJsonDocument payloadDoc(4096);
+  payloadDoc["model"] = chatgpt_model;
+  payloadDoc["max_tokens"] = chatgpt_token.toInt();
+  payloadDoc["temperature"] = 0.2;
+
+  JsonArray messages = payloadDoc.createNestedArray("messages");
+  JsonObject systemMsg = messages.createNestedObject();
+  systemMsg["role"] = "system";
+  systemMsg["content"] = chatgpt_system_prompt;
+
+  JsonObject userMsg = messages.createNestedObject();
+  userMsg["role"] = "user";
+  userMsg["content"] = message;
+
+  String payload;
+  serializeJson(payloadDoc, payload);
 
   http.begin(openai_gpt_url);
   http.addHeader("Content-Type", "application/json");
