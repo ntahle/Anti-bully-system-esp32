@@ -44,6 +44,7 @@ const char* app_secret = SECRET_EMQX_APP_SECRET;
 const char* mqtt_username = "syafiq";
 const char* mqtt_password = SECRET_MQTT_PASSWORD;
 const char* topic_subs = "testtopic/esp32";
+const char* topic_status = "testtopic/esp32/status";
 
 String chatgpt_system_prompt = R"PROMPT(You are a school safety triage classifier.
 Task: classify whether the student text indicates immediate help-seeking related to bullying, threat, fear, coercion, harassment, or violence.
@@ -71,6 +72,9 @@ bool isPressed = false;
 uint8_t* audio_buffer = nullptr;
 size_t audio_buffer_size = 0;
 bool recording_active;
+unsigned long lastStatusPublish = 0;
+
+
 
 void blinkLed13(int times, int delayMs) {
   for (int i = 0; i < times; i++) {
@@ -92,6 +96,10 @@ void setup() {
   WiFi.softAP("ESP32_ABS", "12345678");
   
   connectToWiFi();
+  if (WiFi.status() == WL_CONNECTED) {
+    publishEsp32Status("online");
+    lastStatusPublish = millis();
+  }
 
   if (!init_i2s_inmp441()) {
     Serial.println("I2S initialization failed!");
@@ -126,6 +134,11 @@ void loop() {
 
   if (WiFi.status() == WL_CONNECTED ) Connected();
   else Disconnected();
+
+  if (WiFi.status() == WL_CONNECTED && millis() - lastStatusPublish >= 10000) {
+    publishEsp32Status("online");
+    lastStatusPublish = millis();
+  }
 
   if (pbState == LOW) {
     lastPB = millis();

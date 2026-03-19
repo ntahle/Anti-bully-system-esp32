@@ -6,12 +6,18 @@
 #include <HTTPClient.h>
 #include <WiFiClientSecure.h>
 #include <base64.h>
+#include <ArduinoJson.h>
+
 
 extern const char* emqx_api;  
 extern const char* app_id;                 
 extern const char* app_secret;
 extern const char* mqtt_username;
 extern const char* mqtt_password;
+extern const char* topic_status;
+
+
+
 
 String jsonEscape(const String& input) {
   String output;
@@ -75,6 +81,17 @@ bool publishViaAPI(String topic, String payload) {
     http.end();
     return false;
   }
+}
+
+void publishEsp32Status(const char* state) {
+  StaticJsonDocument<160> statusDoc;
+  statusDoc["device"] = "esp32";
+  statusDoc["status"] = state;
+  statusDoc["uptime_ms"] = millis();
+
+  String statusPayload;
+  serializeJson(statusDoc, statusPayload);
+  publishViaAPI(topic_status, statusPayload);
 }
 
 #endif  // MQTT_HANDLERS_H
