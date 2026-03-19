@@ -59,51 +59,6 @@ Rules:
 - Be strict: do not over-trigger.
 - Do not include any text outside JSON.)PROMPT";
 
-String extractAnalysisLabel(String analysis_result) {
-  analysis_result.trim();
-
-  // Prefer extracting the explicit JSON label field first.
-  int labelKey = analysis_result.indexOf("\"label\"");
-  if (labelKey >= 0) {
-    int colonPos = analysis_result.indexOf(':', labelKey);
-    int firstQuotePos = analysis_result.indexOf('"', colonPos + 1);
-    int secondQuotePos = analysis_result.indexOf('"', firstQuotePos + 1);
-
-    if (colonPos >= 0 && firstQuotePos >= 0 && secondQuotePos > firstQuotePos) {
-      String label = analysis_result.substring(firstQuotePos + 1, secondQuotePos);
-      label.toLowerCase();
-      return label;
-    }
-  }
-
-  // Fallback for plain-text responses.
-  String lower = analysis_result;
-  lower.toLowerCase();
-  if (lower.indexOf("yes") >= 0) return "yes";
-  if (lower.indexOf("uncertain") >= 0) return "uncertain";
-  if (lower.indexOf("no") >= 0) return "no";
-  return lower;
-}
-
-String buildSensorPayload(const String& transcription_text, const String& analysis_result) {
-  DynamicJsonDocument outerDoc(1024);
-  outerDoc["message"] = "Alert at Toilet L1";
-  outerDoc["transcription"] = transcription_text;
-
-  DynamicJsonDocument analysisDoc(768);
-  DeserializationError analysisErr = deserializeJson(analysisDoc, analysis_result);
-  if (!analysisErr) {
-    outerDoc["analysis"] = analysisDoc.as<JsonVariant>();
-  } else {
-    // Fallback to plain text if model returns non-JSON output.
-    outerDoc["analysis"] = analysis_result;
-  }
-
-  String payload;
-  serializeJson(outerDoc, payload);
-  return payload;
-}
-
 
 WebServer server(80);
 WiFiClientSecure client;
@@ -195,7 +150,7 @@ void loop() {
       
       if (analysis_result.length() > 0) {
         String analysis_label = extractAnalysisLabel(analysis_result);
-        Serial.println("\n>>> Bully Analysis Result: " + analysis_result);
+        printAnalysisResultPretty(analysis_result);
         if (analysis_label == "yes") {
           
           Serial.println(">>> ALERT: Bullying behavior detected!");

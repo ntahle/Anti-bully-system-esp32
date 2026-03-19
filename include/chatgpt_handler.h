@@ -12,6 +12,80 @@ extern String chatgpt_system_prompt;
 extern String chatgpt_model;
 extern String chatgpt_token;
 
+String extractAnalysisLabel(String analysis_result) {
+  analysis_result.trim();
+
+  // Prefer extracting the explicit JSON label field first.
+  int labelKey = analysis_result.indexOf("\"label\"");
+  if (labelKey >= 0) {
+    int colonPos = analysis_result.indexOf(':', labelKey);
+    int firstQuotePos = analysis_result.indexOf('"', colonPos + 1);
+    int secondQuotePos = analysis_result.indexOf('"', firstQuotePos + 1);
+
+    if (colonPos >= 0 && firstQuotePos >= 0 && secondQuotePos > firstQuotePos) {
+      String label = analysis_result.substring(firstQuotePos + 1, secondQuotePos);
+      label.toLowerCase();
+      return label;
+    }
+  }
+
+  // Fallback for plain-text responses.
+  String lower = analysis_result;
+  lower.toLowerCase();
+  if (lower.indexOf("yes") >= 0) return "yes";
+  if (lower.indexOf("uncertain") >= 0) return "uncertain";
+  if (lower.indexOf("no") >= 0) return "no";
+  return lower;
+}
+
+String buildSensorPayload(const String& transcription_text, const String& analysis_result) {
+  DynamicJsonDocument outerDoc(1024);
+  outerDoc["message"] = "Alert at Toilet L1";
+  outerDoc["transcription"] = transcription_text;
+
+  DynamicJsonDocument analysisDoc(768);
+  DeserializationError analysisErr = deserializeJson(analysisDoc, analysis_result);
+  if (!analysisErr) {
+    outerDoc["analysis"] = analysisDoc.as<JsonVariant>();
+  } else {
+    // Fallback to plain text if model returns non-JSON output.
+    outerDoc["analysis"] = analysis_result;
+  }
+
+  String payload;
+  serializeJson(outerDoc, payload);
+  return payload;
+}
+
+void printAnalysisResultPretty(const String& analysis_result) {
+  DynamicJsonDocument analysisDoc(768);
+  DeserializationError err = deserializeJson(analysisDoc, analysis_result);
+
+  Serial.println("\n>>> Bully Analysis Result:");
+  if (!err && analysisDoc.is<JsonObject>()) {
+    String label = analysisDoc["label"] | "unknown";
+    int confidence = analysisDoc["confidence"] | -1;
+
+    Serial.println("- label: " + label);
+    if (confidence >= 0) {
+      Serial.println("- confidence: " + String(confidence));
+    }
+
+    if (analysisDoc["reasons"].is<JsonArray>()) {
+      JsonArray reasons = analysisDoc["reasons"].as<JsonArray>();
+      if (reasons.size() > 0) {
+        Serial.println("- reasons:");
+        for (JsonVariant reason : reasons) {
+          Serial.println("  * " + reason.as<String>());
+        }
+      }
+    }
+    return;
+  }
+
+  // Fallback for non-JSON responses.
+  Serial.println(analysis_result);
+}
 
 String parseChatGPTResponse(String response, int httpResponseCode) {
   Serial.println("Response Code: " + String(httpResponseCode));
