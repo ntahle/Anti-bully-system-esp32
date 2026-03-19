@@ -44,7 +44,7 @@ const char* mqtt_username = "syafiq";
 const char* mqtt_password = SECRET_MQTT_PASSWORD;
 const char* topic_subs = "testtopic/esp32";
 
-/*String chatgpt_system_prompt = R"PROMPT(You are a school safety triage classifier.
+String chatgpt_system_prompt = R"PROMPT(You are a school safety triage classifier.
 Task: classify whether the student text indicates immediate help-seeking related to bullying, threat, fear, coercion, harassment, or violence.
 Return JSON only with keys:
 - label: one of ["yes","no","uncertain"]
@@ -56,9 +56,33 @@ Rules:
 - "no" if casual talk, jokes, unrelated school chatter, or unclear context without distress.
 - "uncertain" if transcription is noisy, incomplete, contradictory, or too short.
 - Be strict: do not over-trigger.
-- Do not include any text outside JSON.)PROMPT";*/
+- Do not include any text outside JSON.)PROMPT";
 
-String chatgpt_system_prompt = "You are a school safety triage classifier.classify whether the student text indicates immediate help-seeking related to bullying, threat, fear, coercion, harassment, or violence. Answer only in yes or no or uncertain";
+String extractAnalysisLabel(String analysis_result) {
+  analysis_result.trim();
+
+  // Prefer extracting the explicit JSON label field first.
+  int labelKey = analysis_result.indexOf("\"label\"");
+  if (labelKey >= 0) {
+    int colonPos = analysis_result.indexOf(':', labelKey);
+    int firstQuotePos = analysis_result.indexOf('"', colonPos + 1);
+    int secondQuotePos = analysis_result.indexOf('"', firstQuotePos + 1);
+
+    if (colonPos >= 0 && firstQuotePos >= 0 && secondQuotePos > firstQuotePos) {
+      String label = analysis_result.substring(firstQuotePos + 1, secondQuotePos);
+      label.toLowerCase();
+      return label;
+    }
+  }
+
+  // Fallback for plain-text responses.
+  String lower = analysis_result;
+  lower.toLowerCase();
+  if (lower.indexOf("yes") >= 0) return "yes";
+  if (lower.indexOf("uncertain") >= 0) return "uncertain";
+  if (lower.indexOf("no") >= 0) return "no";
+  return lower;
+}
 
 
 WebServer server(80);
@@ -150,8 +174,9 @@ void loop() {
       String analysis_result = analyze_text_with_chatgpt(transcribed_text);
       
       if (analysis_result.length() > 0) {
+        String analysis_label = extractAnalysisLabel(analysis_result);
         Serial.println("\n>>> Bully Analysis Result: " + analysis_result);
-        if (analysis_result.equalsIgnoreCase("Yes") || analysis_result.equalsIgnoreCase("Yes.")) {
+        if (analysis_label == "yes") {
           
           Serial.println(">>> ALERT: Bullying behavior detected!");
           bot.sendMessage(chatID, "ALERT: Bullying behavior detected in the latest transcription:\n\n\"" + transcribed_text + "\"\n\nAnalysis: " + analysis_result);
