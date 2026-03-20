@@ -45,9 +45,10 @@ const char* mqtt_username = "syafiq";
 const char* mqtt_password = SECRET_MQTT_PASSWORD;
 const char* topic_subs = "testtopic/esp32";
 const char* topic_status = "testtopic/esp32/status";
+const char* topic_ack = "testtopic/acknowledgment";
 
 String chatgpt_system_prompt = R"PROMPT(You are a school safety triage classifier.
-Task: classify whether the student text indicates immediate help-seeking related to bullying, threat, fear, coercion, harassment, or violence.
+Task: classify whether the student text indicates immediate help-seeking or probability which lead to possible bully incidents which related to bullying, threat, fear, coercion, harassment, or violence.
 Return JSON only with keys:
 - label: one of ["yes","no","uncertain"]
 - confidence: integer 0-100
@@ -58,6 +59,8 @@ Rules:
 - "no" if casual talk, jokes, unrelated school chatter, or unclear context without distress.
 - "uncertain" if transcription is noisy, incomplete, contradictory, or too short.
 - Be strict: do not over-trigger.
+- the conversation may contain slang, misspellings, or informal language common among students. Consider these in your analysis.
+- the conversation may in english or a mix of english, Malay and local language. Focus on the meaning rather than specific words.
 - Do not include any text outside JSON.)PROMPT";
 
 
@@ -88,7 +91,7 @@ void blinkLed13(int times, int delayMs) {
 void setup() {
   Serial.begin(115200);
   pinMode(led, OUTPUT);
-  pinMode(ledBlink, OUTPUT); // Add this line
+  pinMode(ledBlink, OUTPUT); 
    
   EEPROM.begin(EEPROM_SIZE);
 
@@ -135,6 +138,12 @@ void loop() {
   if (WiFi.status() == WL_CONNECTED ) Connected();
   else Disconnected();
 
+  serviceMqttAck();
+  if (consumeAcknowledgedPressed()) {
+    Serial.println("acknowledged pressed");
+    blinkLed13(2, 200);
+  }
+
   if (WiFi.status() == WL_CONNECTED && millis() - lastStatusPublish >= 10000) {
     publishEsp32Status("online");
     lastStatusPublish = millis();
@@ -152,6 +161,7 @@ void loop() {
     
     Serial.println("\n========================================");
     digitalWrite(ledBlink, HIGH); 
+    pauseMqttAck();
 
     record_audio_from_microphone();
     
@@ -171,7 +181,15 @@ void loop() {
           bot.sendMessage(chatID, "ALERT: Bullying behavior detected in the latest transcription:\n\n\"" + transcribed_text + "\"\n\nAnalysis: " + analysis_result);
           
           String sensorData = buildSensorPayload(transcribed_text, analysis_result);
-          if (publishViaAPI(topic_subs, sensorData)) {    //mqtt publish to EMQX Serverless API
+          bool sensorPublished = publishViaAPI(topic_subs, sensorData, 1);    //mqtt publish to EMQX Serverless API
+
+          // Reconnect ACK subscriber immediately so app acknowledgments are less likely to be missed.
+          resumeMqttAck();
+          if (!waitForMqttAckReady(1500)) {
+            Serial.println(">>> WARNING: ACK listener not ready yet");
+          }
+
+          if (sensorPublished) {
             Serial.println(">>> Sensor data published successfully.");
           } else {
             Serial.println(">>> Failed to publish sensor data.");
@@ -186,6 +204,8 @@ void loop() {
     } else {
       Serial.println(">>> Skipping ChatGPT analysis - No transcription available");
     }
+
+    resumeMqttAck();
     digitalWrite(ledBlink, LOW); 
     
     pbcond = 1;
