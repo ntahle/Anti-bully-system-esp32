@@ -31,7 +31,8 @@ const char* openai_api_key = SECRET_OPENAI_API_KEY;
 const char* openai_whisper_url = "https://api.openai.com/v1/audio/transcriptions";
 const char* whisper_model = "gpt-4o-transcribe-diarize";
 const char* openai_gpt_url = "https://api.openai.com/v1/chat/completions";
-String chatgpt_model = "gpt-3.5-turbo";
+//String chatgpt_model = "gpt-3.5-turbo";
+String chatgpt_model = "gpt-4.1-mini";
 String chatgpt_token = "100";
 
 
@@ -47,7 +48,7 @@ const char* topic_subs = "testtopic/esp32";
 const char* topic_status = "testtopic/esp32/status";
 const char* topic_ack = "testtopic/acknowledgment";
 
-String chatgpt_system_prompt = R"PROMPT(You are a school safety triage classifier.
+String chatgpt_system_prompt = R"PROMPT(You are a school safety triage classifier in Malaysia's school in elementary and secondary levels.
 Task: classify whether the student text indicates immediate help-seeking or probability which lead to possible bully incidents which related to bullying, threat, fear, coercion, harassment, or violence.
 Return JSON only with keys:
 - label: one of ["yes","no","uncertain"]
