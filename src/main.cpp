@@ -31,6 +31,7 @@ const char* openai_api_key = SECRET_OPENAI_API_KEY;
 const char* openai_whisper_url = "https://api.openai.com/v1/audio/transcriptions";
 const char* whisper_model = "gpt-4o-transcribe-diarize";
 const char* openai_gpt_url = "https://api.openai.com/v1/chat/completions";
+//String chatgpt_model = "gpt-4.1-mini";
 String chatgpt_model = "gpt-3.5-turbo";
 String chatgpt_token = "100";
 
@@ -46,8 +47,8 @@ const char* mqtt_password = SECRET_MQTT_PASSWORD;
 const char* topic_subs = "testtopic/esp32";
 const char* topic_status = "testtopic/esp32/status";
 
-String chatgpt_system_prompt = R"PROMPT(You are a school safety triage classifier.
-Task: classify whether the student text indicates immediate help-seeking related to bullying, threat, fear, coercion, harassment, or violence.
+String chatgpt_system_prompt = R"PROMPT(You are a school safety triage classifier in Malaysia's school in elementary and secondary levels.
+Task: classify whether the student text indicates immediate help-seeking or probability which lead to possible bully incidents which related to bullying, threat, fear, coercion, harassment, or violence.
 Return JSON only with keys:
 - label: one of ["yes","no","uncertain"]
 - confidence: integer 0-100
@@ -58,8 +59,9 @@ Rules:
 - "no" if casual talk, jokes, unrelated school chatter, or unclear context without distress.
 - "uncertain" if transcription is noisy, incomplete, contradictory, or too short.
 - Be strict: do not over-trigger.
+- the conversation may contain slang, misspellings, or informal language common among students. Consider these in your analysis.
+- the conversation may in english or a mix of english, Malay and local language. Focus on the meaning rather than specific words.
 - Do not include any text outside JSON.)PROMPT";
-
 
 WebServer server(80);
 WiFiClientSecure client;
