@@ -38,7 +38,7 @@ String chatgpt_token = "100";
 const char* botToken = SECRET_TELEGRAM_BOT_TOKEN;
 const char* chatID = SECRET_TELEGRAM_CHAT_ID;
 
-const char* emqx_api = "https://b1f897df.ala.asia-southeast1.emqxsl.com:8443/api/v5";  
+const char* emqx_api = SECRET_EMQX_API;  
 const char* app_id = "m06f1f17";                 
 const char* app_secret = SECRET_EMQX_APP_SECRET;
 const char* mqtt_username = "syafiq";
