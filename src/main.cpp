@@ -31,7 +31,7 @@ const char* openai_api_key = SECRET_OPENAI_API_KEY;
 const char* openai_whisper_url = "https://api.openai.com/v1/audio/transcriptions";
 const char* whisper_model = "gpt-4o-transcribe-diarize";
 const char* openai_gpt_url = "https://api.openai.com/v1/chat/completions";
-String chatgpt_model = "gpt-3.5-turbo";
+String chatgpt_model = "gpt-4o-mini";
 String chatgpt_token = "100";
 
 

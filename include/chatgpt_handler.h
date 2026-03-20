@@ -119,9 +119,6 @@ String parseChatGPTResponse(String response, int httpResponseCode) {
         JsonObject message = firstChoice["message"];
         if (message.containsKey("content")) {
           String contentResponse = message["content"].as<String>();
-          // Serial.println("\n=== ChatGPT Response ===");
-          // Serial.println(contentResponse);
-          // Serial.println("========================\n");
           return contentResponse;
         }
       }
