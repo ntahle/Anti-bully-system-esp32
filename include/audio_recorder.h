@@ -8,7 +8,8 @@
 // Audio Configuration
 #define SAMPLE_RATE 16000U
 #define SAMPLE_BITS 16
-#define VOLUME_GAIN 2
+#define VOLUME_GAIN 3
+#define HPF_ALPHA 0.97f
 #define MAX_AUDIO_SIZE 110000
 #define AUDIO_READ_CHUNK_SIZE 512
 #define MAX_RECORD_TIME_SECONDS 30
@@ -26,59 +27,6 @@ extern i2s_port_t i2s_port;
 extern bool recording_active;
 extern uint8_t* audio_buffer;
 extern size_t audio_buffer_size;
-// extern bool sd_card_ready;
-// extern String recorded_audio_path;
-// extern size_t recorded_audio_size;
-
-/*bool init_sd_card() {
-  pinMode(SD_SCK_PIN, OUTPUT);
-  pinMode(SD_MOSI_PIN, OUTPUT);
-  pinMode(SD_MISO_PIN, INPUT_PULLUP);
-  pinMode(SD_CS_PIN, OUTPUT);
-  digitalWrite(SD_CS_PIN, HIGH);
-  delay(20);
-
-  sd_spi.begin(SD_SCK_PIN, SD_MISO_PIN, SD_MOSI_PIN, SD_CS_PIN);
-
-  // Send dummy clocks with CS high to place card into SPI-ready idle state.
-  sd_spi.beginTransaction(SPISettings(400000, MSBFIRST, SPI_MODE0));
-  for (int i = 0; i < 10; i++) {
-    sd_spi.transfer(0xFF);
-  }
-  sd_spi.endTransaction();
-
-  delay(20);
-
-  const uint32_t sd_frequencies[] = {4000000, 1000000, 400000, 8000000};
-  bool mounted = false;
-
-  for (size_t i = 0; i < sizeof(sd_frequencies) / sizeof(sd_frequencies[0]); i++) {
-    SD.end();
-    delay(10);
-    mounted = SD.begin(SD_CS_PIN, sd_spi, sd_frequencies[i]);
-
-    if (mounted) {
-      Serial.printf("SD mount success at %lu Hz\n", (unsigned long)sd_frequencies[i]);
-      break;
-    }
-  }
-
-  if (!mounted) {
-    sd_card_ready = false;
-    Serial.println("SD card initialization failed - using RAM recording fallback");
-    return false;
-  }
-
-  if (SD.cardType() == CARD_NONE) {
-    sd_card_ready = false;
-    Serial.println("No SD card detected - using RAM recording fallback");
-    return false;
-  }
-
-  sd_card_ready = true;
-  Serial.printf("SD card ready. Size: %llu MB\n", SD.cardSize() / (1024ULL * 1024ULL));
-  return true;
-}*/
 
 // I2S Initialization for INMP441
 bool init_i2s_inmp441() {
@@ -129,9 +77,6 @@ void deinit_i2s() {
   }
 }
 
-// REMOVED: SD card functions (using RAM recording only)
-// - finalize_wav_file()
-// - record_wav_to_sd()
 
 // Record WAV to RAM
 void record_wav_to_ram() {
@@ -162,6 +107,8 @@ void record_wav_to_ram() {
   size_t total_bytes = WAV_HEADER_SIZE;
   unsigned long startTime = millis();
   const uint32_t max_record_time = 3;  // Fixed 3-second recording
+  float hpf_prev_input = 0.0f;
+  float hpf_prev_output = 0.0f;
 
   Serial.println("Recording audio to RAM...");
   Serial.printf("Max buffer: %d bytes (~%.1f seconds)\n", 
@@ -182,10 +129,16 @@ void record_wav_to_ram() {
       break;
     }
 
-    // Apply volume gain
+    // Apply high-pass filter (remove low-frequency rumble/DC) then gain
     for (size_t i = 0; i < bytes_read; i += 2) {
       int16_t* sample = (int16_t*)&read_buffer[i];
-      int32_t amp = (*sample) << VOLUME_GAIN;
+      float input = (float)(*sample);
+      float filtered = HPF_ALPHA * (hpf_prev_output + input - hpf_prev_input);
+
+      hpf_prev_input = input;
+      hpf_prev_output = filtered;
+
+      int32_t amp = ((int32_t)filtered) << VOLUME_GAIN;
       
       if (amp > 32767) amp = 32767;
       if (amp < -32768) amp = -32768;
