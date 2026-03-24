@@ -4,6 +4,7 @@
 #include <EEPROM.h>
 #include <String>
 #include <ArduinoJson.h>
+#include <HTTPClient.h>
 #include "handlers.h" //wifi config handlers
 #include "chatgpt_handler.h" //chatgpt analyser
 #include "audio_recorder.h" //mic 
@@ -12,6 +13,7 @@
 #include "telegram_handler.h" //telegram bot notification
 #include "UniversalTelegramBot.h"
 #include "mqtt_handlers.h" //mqtt publish handlers
+#include "firebase_handler.h" //fcm publish handler
 #if __has_include("secrets.h")
 #include "secrets.h" //local credentials
 #else
@@ -33,6 +35,7 @@ int pbClickCount = 0;
 const unsigned long pbDebounceMs = 50;
 const unsigned long pbDoubleClickWindowMs = 1500;
 
+
 const char* openai_api_key = SECRET_OPENAI_API_KEY;
 const char* openai_whisper_url = "https://api.openai.com/v1/audio/transcriptions";
 const char* whisper_model = "gpt-4o-transcribe-diarize";
@@ -52,6 +55,10 @@ const char* mqtt_password = SECRET_MQTT_PASSWORD;
 const char* topic_subs = "testtopic/esp32";
 const char* topic_status = "testtopic/esp32/status";
 const char* topic_ack = "testtopic/acknowledgment";
+
+const char* fcm_api_url = SECRET_FCM_API_URL;
+const char* fcm_auth_bearer = SECRET_FCM_AUTH_BEARER;
+const char* fcm_device_token = SECRET_FCM_DEVICE_TOKEN;
 
 String chatgpt_system_prompt = R"PROMPT(You are a school safety triage classifier in Malaysia's school in elementary and secondary levels.
 Task: classify whether the student text indicates immediate help-seeking or probability which lead to possible bully incidents which related to bullying, threat, fear, coercion, harassment, or violence.
@@ -82,40 +89,6 @@ size_t audio_buffer_size = 0;
 bool recording_active;
 unsigned long lastStatusPublish = 0;
 
-void testNoti(){
-if (pbState != lastPbState && (millis() - lastPbDebounceTime) > pbDebounceMs) {
-    lastPbDebounceTime = millis();
-    lastPbState = pbState;
-
-    if (pbState == LOW) {
-      if (lastPbClickTime != 0 && (millis() - lastPbClickTime) <= pbDoubleClickWindowMs) {
-        pbClickCount++;
-      } else {
-        pbClickCount = 1;
-      }
-
-      lastPbClickTime = millis();
-
-      if (pbClickCount >= 2) {
-        bool testPublished = publishViaAPI(topic_subs, "testing connection", 1);
-        if (testPublished) {
-          Serial.println(">>> Sent: testing connection");
-        } else {
-          Serial.println(">>> Failed to send: testing connection");
-        }
-        pbClickCount = 0;
-        lastPbClickTime = 0;
-      }
-    }
-  }
-
-  if (lastPbClickTime != 0 && (millis() - lastPbClickTime) > pbDoubleClickWindowMs) {
-    pbClickCount = 0;
-    lastPbClickTime = 0;
-  }
-
-
-}
 
 void blinkLed13(int times, int delayMs) {
   for (int i = 0; i < times; i++) {
@@ -125,6 +98,8 @@ void blinkLed13(int times, int delayMs) {
     delay(delayMs);
   }
 }
+
+
 
 void setup() {
   Serial.begin(115200);
@@ -173,8 +148,44 @@ void loop() {
   int pushNoti = digitalRead(pb1);
 
   // Detect a debounced double-click on pb and publish a connectivity test message.
-  testNoti();
-  
+if (pbState != lastPbState && (millis() - lastPbDebounceTime) > pbDebounceMs) {
+    lastPbDebounceTime = millis();
+    lastPbState = pbState;
+
+    if (pbState == LOW) {
+      if (lastPbClickTime != 0 && (millis() - lastPbClickTime) <= pbDoubleClickWindowMs) {
+        pbClickCount++;
+      } else {
+        pbClickCount = 1;
+      }
+
+      lastPbClickTime = millis();
+
+      if (pbClickCount >= 2) {
+        
+        bool fcmSent = sendFcmNotification("Testing connection from ESP32", "testing", "ABS Test Notification");
+        //bool testPublished = publishViaAPI(topic_subs, "testing connection", 1);
+        // if (testPublished) {
+        //   Serial.println(">>> Sent: testing connection");
+        // } else {
+        //   Serial.println(">>> Failed to send: testing connection");
+        // }
+        if (fcmSent) {
+          Serial.println(">>> Sent: FCM testing notification");
+        } else {
+          Serial.println(">>> Failed to send: FCM testing notification");
+        }
+        pbClickCount = 0;
+        lastPbClickTime = 0;
+      }
+    }
+  }
+
+  if (lastPbClickTime != 0 && (millis() - lastPbClickTime) > pbDoubleClickWindowMs) {
+    pbClickCount = 0;
+    lastPbClickTime = 0;
+  }
+
   if (WiFi.status() == WL_CONNECTED ) Connected();
   else Disconnected();
 
@@ -221,7 +232,18 @@ void loop() {
           bot.sendMessage(chatID, "ALERT: Bullying behavior detected in the latest transcription:\n\n\"" + transcribed_text + "\"\n\nAnalysis: " + analysis_result);
           
           String sensorData = buildSensorPayload(transcribed_text, analysis_result);
-          bool sensorPublished = publishViaAPI(topic_subs, sensorData, 1);    //mqtt publish to EMQX Serverless API
+          //bool sensorPublished = publishViaAPI(topic_subs, sensorData, 1);    //mqtt publish to EMQX Serverless API
+          
+          String transcriptionPreview = transcribed_text;
+          transcriptionPreview.replace("\n", " ");
+          if (transcriptionPreview.length() > 120) {
+            transcriptionPreview = transcriptionPreview.substring(0, 120) + "...";
+          }
+          String alertBody = "ALERT: Bullying behavior detected";
+          if (transcriptionPreview.length() > 0) {
+            alertBody += " - \"" + transcriptionPreview + "\"";
+          }
+          bool fcmSent = sendFcmNotification(alertBody, "alert", "Bullying Alert Detected", sensorData);
 
           // Reconnect ACK subscriber immediately so app acknowledgments are less likely to be missed.
           resumeMqttAck();
@@ -229,13 +251,19 @@ void loop() {
             Serial.println(">>> WARNING: ACK listener not ready yet");
           }
 
-          if (sensorPublished) {
-            Serial.println(">>> Sensor data published successfully.");
+          // if (sensorPublished) {
+          //   Serial.println(">>> Sensor data published successfully.");
+          // } else {
+          //   Serial.println(">>> Failed to publish sensor data.");
+          // }
+
+          if (fcmSent) {
+            Serial.println(">>> Bullying alert push notification sent successfully.");
           } else {
-            Serial.println(">>> Failed to publish sensor data.");
+            Serial.println(">>> Failed to send bullying alert push notification.");
           }
 
-          blinkLed13(5, 500);
+          blinkLed13(5, 100);
 
         } else {
           Serial.println(">>> No bullying behavior detected.");
