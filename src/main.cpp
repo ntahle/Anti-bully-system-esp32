@@ -26,6 +26,12 @@ const int ledBlink = 13;
 
 unsigned long lastPB;
 unsigned long lastWiFiCheck = 0;
+unsigned long lastPbClickTime = 0;
+unsigned long lastPbDebounceTime = 0;
+int lastPbState = HIGH;
+int pbClickCount = 0;
+const unsigned long pbDebounceMs = 50;
+const unsigned long pbDoubleClickWindowMs = 1500;
 
 const char* openai_api_key = SECRET_OPENAI_API_KEY;
 const char* openai_whisper_url = "https://api.openai.com/v1/audio/transcriptions";
@@ -76,7 +82,40 @@ size_t audio_buffer_size = 0;
 bool recording_active;
 unsigned long lastStatusPublish = 0;
 
+void testNoti(){
+if (pbState != lastPbState && (millis() - lastPbDebounceTime) > pbDebounceMs) {
+    lastPbDebounceTime = millis();
+    lastPbState = pbState;
 
+    if (pbState == LOW) {
+      if (lastPbClickTime != 0 && (millis() - lastPbClickTime) <= pbDoubleClickWindowMs) {
+        pbClickCount++;
+      } else {
+        pbClickCount = 1;
+      }
+
+      lastPbClickTime = millis();
+
+      if (pbClickCount >= 2) {
+        bool testPublished = publishViaAPI(topic_subs, "testing connection", 1);
+        if (testPublished) {
+          Serial.println(">>> Sent: testing connection");
+        } else {
+          Serial.println(">>> Failed to send: testing connection");
+        }
+        pbClickCount = 0;
+        lastPbClickTime = 0;
+      }
+    }
+  }
+
+  if (lastPbClickTime != 0 && (millis() - lastPbClickTime) > pbDoubleClickWindowMs) {
+    pbClickCount = 0;
+    lastPbClickTime = 0;
+  }
+
+
+}
 
 void blinkLed13(int times, int delayMs) {
   for (int i = 0; i < times; i++) {
@@ -133,7 +172,9 @@ void loop() {
   int pbState = digitalRead(pb);
   int pushNoti = digitalRead(pb1);
 
-
+  // Detect a debounced double-click on pb and publish a connectivity test message.
+  testNoti();
+  
   if (WiFi.status() == WL_CONNECTED ) Connected();
   else Disconnected();
 

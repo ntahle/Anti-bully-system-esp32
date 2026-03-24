@@ -1,0 +1,13 @@
+[33m7b1f7d3[m[33m ([m[1;36mHEAD[m[33m -> [m[1;32mmain[m[33m, [m[1;31morigin/main[m[33m)[m Successful V2.0.0 ABS
+[33mb06e2f5[m fixing merging errors with ack_but
+[33m390da90[m model
+[33md8fb3ba[m[33m ([m[1;31morigin/ack_but[m[33m, [m[1;32mack_but[m[33m)[m prompt and model upgrade
+[33m01e6a36[m added ack button, blink after ack, improve a little of the promt
+[33m6780eaa[m move emqx api
+[33mf1fb9c7[m[33m ([m[1;31morigin/highPfilter[m[33m, [m[1;32mhighPfilter[m[33m)[m filtering and add gain
+[33m83112bd[m[33m ([m[1;31morigin/memory_alloc[m[33m, [m[1;32mmemory_alloc[m[33m)[m update esp32 status
+[33mcacefbd[m alloc-inc
+[33m7f6e8e2[m[33m ([m[1;31morigin/prompt-updt[m[33m, [m[1;32mprompt-updt[m[33m)[m improve parsing
+[33mf40c73b[m improved prompt and json
+[33m134f553[m added a specific prompt
+[33m6da0817[m Initial clean commit
