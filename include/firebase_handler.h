@@ -7,13 +7,73 @@
 #include <HTTPClient.h>
 
 extern const char* fcm_api_url;
-extern const char* fcm_auth_bearer;
 extern const char* fcm_device_token;
+
+extern const char* firebase_token_url;
+
+// Function to fetch the latest FCM auth bearer token from the API
+String getFcmAuthBearer() {
+  if (WiFi.status() != WL_CONNECTED) {
+    Serial.println(">>> FCM token fetch: WiFi not connected");
+    return "";
+  }
+
+  WiFiClientSecure secureClient;
+  secureClient.setInsecure();
+
+  HTTPClient http;
+  if (!http.begin(secureClient, firebase_token_url)) {
+    Serial.println(">>> FCM token fetch failed: cannot initialize HTTP client");
+    return "";
+  }
+
+  http.setTimeout(15000);
+  http.setConnectTimeout(8000);
+  int httpCode = http.GET();
+  String response = http.getString();
+  http.end();
+
+  if (httpCode != 200 && httpCode != 201) {
+    Serial.printf(">>> FCM token fetch failed (HTTP %d)\n", httpCode);
+    return "";
+  }
+
+  // Parse JSON response to extract token
+  JsonDocument doc;
+  DeserializationError err = deserializeJson(doc, response);
+  
+  if (err) {
+    Serial.printf(">>> FCM token parse failed: %s\n", err.c_str());
+    return "";
+  }
+
+  if (doc["status"].as<String>() != "ok") {
+    Serial.println(">>> FCM token response status not ok");
+    return "";
+  }
+
+  String token = doc["token"]["token"].as<String>();
+  
+  if (token.length() == 0) {
+    Serial.println(">>> FCM token extraction failed: token field empty");
+    return "";
+  }
+
+  Serial.println(">>> FCM auth bearer token fetched successfully");
+  return token;
+}
 
 
 bool sendFcmNotification(const String& messageBody, const String& notificationType = "testing", const String& notificationTitle = "Anti-Bullying System", const String& mqttPayloadJson = "") {
   if (WiFi.status() != WL_CONNECTED) {
     Serial.println(">>> FCM skipped: WiFi not connected");
+    return false;
+  }
+
+  // Fetch the latest auth bearer token before sending notification
+  String fcm_auth_bearer = getFcmAuthBearer();
+  if (fcm_auth_bearer.length() == 0) {
+    Serial.println(">>> FCM skipped: failed to get auth bearer token");
     return false;
   }
 

@@ -12,7 +12,7 @@
 #define HPF_ALPHA 0.97f
 #define MAX_AUDIO_SIZE 110000
 #define AUDIO_READ_CHUNK_SIZE 512
-#define MAX_RECORD_TIME_SECONDS 30
+#define MAX_RECORD_TIME_SECONDS 3
 
 // I2S Configuration for INMP441
 #define I2S_NUM I2S_NUM_0
@@ -27,6 +27,7 @@ extern i2s_port_t i2s_port;
 extern bool recording_active;
 extern uint8_t* audio_buffer;
 extern size_t audio_buffer_size;
+const uint32_t rtime = 3;  // Fixed 4-second recording (~130KB buffer)
 
 // I2S Initialization for INMP441
 bool init_i2s_inmp441() {
@@ -106,7 +107,7 @@ void record_wav_to_ram() {
   recording_active = true;
   size_t total_bytes = WAV_HEADER_SIZE;
   unsigned long startTime = millis();
-  const uint32_t max_record_time = 3;  // Fixed 3-second recording
+  const uint32_t max_record_time = rtime;  // Fixed 4-second recording (~130KB buffer)
   float hpf_prev_input = 0.0f;
   float hpf_prev_output = 0.0f;
 
