@@ -60,7 +60,6 @@ const char* fcm_api_url = SECRET_FCM_API_URL;
 const char* fcm_device_token = SECRET_FCM_DEVICE_TOKEN;
 const char* firebase_token_url = "https://vmc-api.edxapay.com/firebase-show";
 
-
 String chatgpt_system_prompt = R"PROMPT(You are a school safety triage classifier in Malaysia's school in elementary and secondary levels.
 Task: classify whether the student text indicates immediate help-seeking or probability which lead to possible bully incidents which related to bullying, threat, fear, coercion, harassment, or violence.
 Return JSON only with keys:
@@ -149,7 +148,7 @@ void loop() {
   int pushNoti = digitalRead(pb1);
 
   // Detect a debounced double-click on pb and publish a connectivity test message.
-if (pbState != lastPbState && (millis() - lastPbDebounceTime) > pbDebounceMs) {
+  if (pbState != lastPbState && (millis() - lastPbDebounceTime) > pbDebounceMs) {
     lastPbDebounceTime = millis();
     lastPbState = pbState;
 
