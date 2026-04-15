@@ -20,11 +20,13 @@
 #include "secrets.template.h" //placeholder credentials for compilation
 #endif
 
-int led = 2; 
-int pb = 4;
-int pb1 = 15;
+int led = 6; 
+int pb = 8;
+int pb1 = 1;
 int pbcond = 0;
-const int ledBlink = 13;
+const int ledBlink = 5;
+const int bell = 7;
+
 
 unsigned long lastPB;
 unsigned long lastWiFiCheck = 0;
@@ -105,6 +107,7 @@ void setup() {
   Serial.begin(115200);
   pinMode(led, OUTPUT);
   pinMode(ledBlink, OUTPUT); 
+  pinMode(pb, INPUT_PULLUP);
    
   EEPROM.begin(EEPROM_SIZE);
 

@@ -3,6 +3,7 @@
 
 #include <Arduino.h>
 #include "driver/i2s.h"
+#include "esp_heap_caps.h"
 #include "wav_generator.h"
 
 // Audio Configuration
@@ -10,16 +11,16 @@
 #define SAMPLE_BITS 16
 #define VOLUME_GAIN 3
 #define HPF_ALPHA 0.97f
-#define MAX_AUDIO_SIZE 110000
+#define MAX_AUDIO_SIZE 500000
 #define AUDIO_READ_CHUNK_SIZE 512
-#define MAX_RECORD_TIME_SECONDS 3
+#define MAX_RECORD_TIME_SECONDS 15
 
 // I2S Configuration for INMP441
 #define I2S_NUM I2S_NUM_0
-#define I2S_SCK GPIO_NUM_26
-#define I2S_WS GPIO_NUM_33
-#define I2S_DIN GPIO_NUM_27
-#define BUTTON_PIN 15
+#define I2S_SCK GPIO_NUM_13
+#define I2S_WS GPIO_NUM_12
+#define I2S_DIN GPIO_NUM_11
+#define BUTTON_PIN 1
 
 
 // Global variables
@@ -27,7 +28,7 @@ extern i2s_port_t i2s_port;
 extern bool recording_active;
 extern uint8_t* audio_buffer;
 extern size_t audio_buffer_size;
-const uint32_t rtime = 3;  // Fixed 4-second recording (~130KB buffer)
+const uint32_t rtime = 15;  // Fixed 15-second recording (~480KB buffer)
 
 // I2S Initialization for INMP441
 bool init_i2s_inmp441() {
@@ -85,7 +86,11 @@ void record_wav_to_ram() {
   Serial.printf("Free PSRAM: %d bytes\n", ESP.getFreePsram());
   Serial.printf("Requesting: %d bytes\n\n", MAX_AUDIO_SIZE);
   
-  audio_buffer = (uint8_t*)malloc(MAX_AUDIO_SIZE);
+  audio_buffer = (uint8_t*)heap_caps_malloc(MAX_AUDIO_SIZE, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
+  if (!audio_buffer) {
+    Serial.println("WARNING: PSRAM allocation failed, falling back to internal heap");
+    audio_buffer = (uint8_t*)malloc(MAX_AUDIO_SIZE);
+  }
   if (!audio_buffer) {
     Serial.println("ERROR: Failed to allocate audio buffer!");
     Serial.printf("Free heap after failed allocation: %d bytes\n", ESP.getFreeHeap());
