@@ -28,11 +28,12 @@ const int ledBlink = 5;
 const int bell = 7;
 
 
-unsigned long lastPB;
+unsigned long pbPressStart = 0;
+bool pbResetHandled = false;
 unsigned long lastWiFiCheck = 0;
 unsigned long lastPbClickTime = 0;
 unsigned long lastPbDebounceTime = 0;
-int lastPbState = HIGH;
+bool lastPbState = false;
 int pbClickCount = 0;
 const unsigned long pbDebounceMs = 50;
 const unsigned long pbDoubleClickWindowMs = 1500;
@@ -147,7 +148,7 @@ void setup() {
 
 void loop() {
   server.handleClient();
-  int pbState = digitalRead(pb);
+  bool pbState = (digitalRead(pb) == LOW);
   int pushNoti = digitalRead(pb1);
 
   // Detect a debounced double-click on pb and publish a connectivity test message.
@@ -155,7 +156,7 @@ void loop() {
     lastPbDebounceTime = millis();
     lastPbState = pbState;
 
-    if (pbState == LOW) {
+    if (pbState) {
       if (lastPbClickTime != 0 && (millis() - lastPbClickTime) <= pbDoubleClickWindowMs) {
         pbClickCount++;
       } else {
@@ -203,12 +204,18 @@ void loop() {
     lastStatusPublish = millis();
   }
 
-  if (pbState == LOW) {
-    lastPB = millis();
-  }
-  if (millis() - lastPB > 3000 && pbState == HIGH && lastPB != 0) {
-    handleReset();
-    lastPB = 0; 
+  if (pbState) {
+    if (pbPressStart == 0) {
+      pbPressStart = millis();
+    }
+
+    if (!pbResetHandled && (millis() - pbPressStart >= 3000)) {
+      handleReset();
+      pbResetHandled = true;
+    }
+  } else {
+    pbPressStart = 0;
+    pbResetHandled = false;
   }
 
   if (pushNoti == HIGH && pbcond == 0) { //system triggered
