@@ -14,6 +14,7 @@
 #define MAX_AUDIO_SIZE 500000
 #define AUDIO_READ_CHUNK_SIZE 512
 #define MAX_RECORD_TIME_SECONDS 15
+#define MIC_TRIGGER_P2P_THRESHOLD 5000
 
 // I2S Configuration for INMP441
 #define I2S_NUM I2S_NUM_0
@@ -77,6 +78,40 @@ void deinit_i2s() {
     i2s_driver_uninstall(i2s_port);
     Serial.println("I2S deinitialized");
   }
+}
+
+// Quick sound activity check to trigger recording from INMP441 without PIR.
+bool detect_microphone_activity(uint16_t p2pThreshold = MIC_TRIGGER_P2P_THRESHOLD, uint32_t listenMs = 120) {
+  uint8_t read_buffer[AUDIO_READ_CHUNK_SIZE];
+  unsigned long start = millis();
+  int16_t maxSample = INT16_MIN;
+  int16_t minSample = INT16_MAX;
+  bool gotData = false;
+
+  while (millis() - start < listenMs) {
+    size_t bytes_read = 0;
+    esp_err_t result = i2s_read(i2s_port, read_buffer, sizeof(read_buffer), &bytes_read, pdMS_TO_TICKS(20));
+    if (result != ESP_OK || bytes_read < 2) {
+      continue;
+    }
+
+    gotData = true;
+    for (size_t i = 0; i + 1 < bytes_read; i += 2) {
+      int16_t sample = (int16_t)((read_buffer[i + 1] << 8) | read_buffer[i]);
+      if (sample > maxSample) maxSample = sample;
+      if (sample < minSample) minSample = sample;
+    }
+  }
+
+  if (!gotData) {
+    Serial.println(">>> Mic activity check: no data read from INMP441");
+    return false;
+  }
+
+  int32_t p2p = (int32_t)maxSample - (int32_t)minSample;
+  Serial.printf(">>> Mic peak-to-peak: %ld (min=%d, max=%d, threshold=%u)\n",
+                (long)p2p, minSample, maxSample, p2pThreshold);
+  return p2p >= p2pThreshold;
 }
 
 

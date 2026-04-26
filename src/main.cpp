@@ -22,11 +22,11 @@
 
 int led = 6; 
 int pb = 8;
-int pb1 = 1;
-int pbcond = 0;
 const int ledBlink = 5;
 const int bell = 7;
 
+const unsigned long micTriggerCooldownMs = 10000;
+unsigned long lastMicTriggerTime = 0;
 
 unsigned long pbPressStart = 0;
 bool pbResetHandled = false;
@@ -96,8 +96,10 @@ unsigned long lastStatusPublish = 0;
 void blinkLed13(int times, int delayMs) {
   for (int i = 0; i < times; i++) {
     digitalWrite(ledBlink, HIGH);
+    tone(bell, 1000); // Play a 1000 Hz tone on the bell pin
     delay(delayMs);
     digitalWrite(ledBlink, LOW);
+    noTone(bell); // Stop the tone on the bell pin
     delay(delayMs);
   }
 }
@@ -149,7 +151,6 @@ void setup() {
 void loop() {
   server.handleClient();
   bool pbState = (digitalRead(pb) == LOW);
-  int pushNoti = digitalRead(pb1);
 
   // Detect a debounced double-click on pb and publish a connectivity test message.
   if (pbState != lastPbState && (millis() - lastPbDebounceTime) > pbDebounceMs) {
@@ -218,9 +219,12 @@ void loop() {
     pbResetHandled = false;
   }
 
-  if (pushNoti == HIGH && pbcond == 0) { //system triggered
+  bool micTriggered = detect_microphone_activity();
+  if (micTriggered && (millis() - lastMicTriggerTime >= micTriggerCooldownMs)) { // system triggered by INMP441
+    lastMicTriggerTime = millis();
     
     Serial.println("\n========================================");
+    Serial.println(">>> Microphone activity detected, starting workflow");
     digitalWrite(ledBlink, HIGH); 
     pauseMqttAck();
 
@@ -285,11 +289,6 @@ void loop() {
 
     resumeMqttAck();
     digitalWrite(ledBlink, LOW); 
-    
-    pbcond = 1;
-  }
-  if (pushNoti == LOW) {
-    pbcond = 0;
   }
   delay(50);
   
