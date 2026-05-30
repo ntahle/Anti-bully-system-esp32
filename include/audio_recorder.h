@@ -109,7 +109,7 @@ bool detect_microphone_activity(uint16_t p2pThreshold = MIC_TRIGGER_P2P_THRESHOL
   }
 
   int32_t p2p = (int32_t)maxSample - (int32_t)minSample;
-  Serial.printf(">>> Mic peak-to-peak: %ld (min=%d, max=%d, threshold=%u)\n",
+  Serial.printf(">>> Mic peak-to-peak: %ld (min=%d, max=%d, threshold=%u)\r\n",
                 (long)p2p, minSample, maxSample, p2pThreshold);
   return p2p >= p2pThreshold;
 }
