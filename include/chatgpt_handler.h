@@ -41,7 +41,7 @@ String extractAnalysisLabel(String analysis_result) {
 
 String buildSensorPayload(const String& transcription_text, const String& analysis_result) {
   DynamicJsonDocument outerDoc(1024);
-  outerDoc["message"] = "Alert at Toilet L1";
+  outerDoc["message"] = "Alert at Fukuyama Dorm DML114 L1";
   outerDoc["transcription"] = transcription_text;
 
   DynamicJsonDocument analysisDoc(768);
@@ -62,7 +62,7 @@ void printAnalysisResultPretty(const String& analysis_result) {
   DynamicJsonDocument analysisDoc(768);
   DeserializationError err = deserializeJson(analysisDoc, analysis_result);
 
-  Serial.println("\n>>> Bully Analysis Result:");
+  Serial.println("\n\n>>> Bully Analysis Result:");
   if (!err && analysisDoc.is<JsonObject>()) {
     String label = analysisDoc["label"] | "unknown";
     int confidence = analysisDoc["confidence"] | -1;
@@ -187,7 +187,7 @@ String sendToChatGPT(String message) {
 
 // Main function to analyze text for bullying behavior
 String analyze_text_with_chatgpt(String text) {
-  Serial.println("\n>>> STEP 3: Analyzing text with ChatGPT...");
+  Serial.println("\n>>> STEP 4: Analyzing text with ChatGPT...");
   String analysis_result = sendToChatGPT(text);
   return analysis_result;
 }

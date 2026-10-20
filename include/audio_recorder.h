@@ -14,7 +14,7 @@
 #define MAX_AUDIO_SIZE 500000
 #define AUDIO_READ_CHUNK_SIZE 512
 #define MAX_RECORD_TIME_SECONDS 15
-#define MIC_TRIGGER_P2P_THRESHOLD 5000
+#define MIC_TRIGGER_P2P_THRESHOLD 7000
 
 // I2S Configuration for INMP441
 #define I2S_NUM I2S_NUM_0
@@ -216,7 +216,6 @@ void record_wav_to_ram() {
                 max_amplitude, min_amplitude, max_amplitude - min_amplitude);
 }
 
-// MAIN WORKFLOW FUNCTION (Called from main.cpp)
 
 // Step 1: Record audio from microphone
 void record_audio_from_microphone() {

@@ -195,7 +195,7 @@ String convert_audio_to_text() {
 
 // Step 4: Free audio memory
 void free_audio_memory() {
-  Serial.println("\n>>> STEP 5: Cleaning up audio buffer...");
+  Serial.println("\n>>> STEP 3: Cleaning up audio buffer...");
   cleanup_audio_buffer();
 }
 

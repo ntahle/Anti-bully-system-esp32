@@ -51,7 +51,7 @@ const char* botToken = SECRET_TELEGRAM_BOT_TOKEN;
 const char* chatID = SECRET_TELEGRAM_CHAT_ID;
 
 const char* emqx_api = SECRET_EMQX_API;  
-const char* app_id = "m06f1f17";                 
+const char* app_id = "h2bf1171";                 
 const char* app_secret = SECRET_EMQX_APP_SECRET;
 const char* mqtt_username = "syafiq";
 const char* mqtt_password = SECRET_MQTT_PASSWORD;
@@ -96,10 +96,10 @@ unsigned long lastStatusPublish = 0;
 void blinkLed13(int times, int delayMs) {
   for (int i = 0; i < times; i++) {
     digitalWrite(ledBlink, HIGH);
-    tone(bell, 1000); // Play a 1000 Hz tone on the bell pin
+    digitalWrite(bell, LOW);
     delay(delayMs);
     digitalWrite(ledBlink, LOW);
-    noTone(bell); // Stop the tone on the bell pin
+    digitalWrite(bell, HIGH);
     delay(delayMs);
   }
 }
@@ -108,9 +108,14 @@ void blinkLed13(int times, int delayMs) {
 
 void setup() {
   Serial.begin(115200);
+
   pinMode(led, OUTPUT);
   pinMode(ledBlink, OUTPUT); 
-  pinMode(pb, INPUT_PULLUP);
+  pinMode(bell, OUTPUT); 
+  pinMode(pb, INPUT);
+  
+  digitalWrite(led, HIGH);
+  digitalWrite(bell, HIGH);
    
   EEPROM.begin(EEPROM_SIZE);
 
@@ -150,7 +155,7 @@ void setup() {
 
 void loop() {
   server.handleClient();
-  bool pbState = (digitalRead(pb) == LOW);
+  bool pbState = (digitalRead(pb) == HIGH); // Assuming HIGH means pressed, adjust if needed
 
   // Detect a debounced double-click on pb and publish a connectivity test message.
   if (pbState != lastPbState && (millis() - lastPbDebounceTime) > pbDebounceMs) {
@@ -169,12 +174,7 @@ void loop() {
       if (pbClickCount >= 2) {
         
         bool fcmSent = sendFcmNotification("Testing connection from ESP32", "testing", "ABS Test Notification");
-        //bool testPublished = publishViaAPI(topic_subs, "testing connection", 1);
-        // if (testPublished) {
-        //   Serial.println(">>> Sent: testing connection");
-        // } else {
-        //   Serial.println(">>> Failed to send: testing connection");
-        // }
+
         if (fcmSent) {
           Serial.println(">>> Sent: FCM testing notification");
         } else {
@@ -200,7 +200,7 @@ void loop() {
     blinkLed13(2, 200);
   }
 
-  if (WiFi.status() == WL_CONNECTED && millis() - lastStatusPublish >= 10000) {
+  if (WiFi.status() == WL_CONNECTED && millis() - lastStatusPublish >= 2000) {
     publishEsp32Status("online");
     lastStatusPublish = millis();
   }
@@ -220,7 +220,8 @@ void loop() {
   }
 
   bool micTriggered = detect_microphone_activity();
-  if (micTriggered && (millis() - lastMicTriggerTime >= micTriggerCooldownMs)) { // system triggered by INMP441
+  // if (micTriggered && (millis() - lastMicTriggerTime >= micTriggerCooldownMs)) { // system triggered by INMP441
+  if (WiFi.status() == WL_CONNECTED && micTriggered && (millis() - lastMicTriggerTime >= micTriggerCooldownMs)) { // system triggered by INMP441
     lastMicTriggerTime = millis();
     
     Serial.println("\n========================================");
@@ -230,8 +231,8 @@ void loop() {
 
     record_audio_from_microphone();
     
-    String transcribed_text = convert_audio_to_text(); // Step 2: Convert audio to text
-    free_audio_memory(); // Free RAM before next HTTPS request (ChatGPT)
+    String transcribed_text = convert_audio_to_text(); 
+    free_audio_memory();
     
     // Step 3: Analyze text
     if (transcribed_text.length() > 0) {
@@ -242,11 +243,10 @@ void loop() {
         printAnalysisResultPretty(analysis_result);
         if (analysis_label == "yes") {
           
-          Serial.println(">>> ALERT: Bullying behavior detected!");
+          Serial.println("\n\n>>> ALERT: Bullying behavior detected!");
           bot.sendMessage(chatID, "ALERT: Bullying behavior detected in the latest transcription:\n\n\"" + transcribed_text + "\"\n\nAnalysis: " + analysis_result);
           
           String sensorData = buildSensorPayload(transcribed_text, analysis_result);
-          //bool sensorPublished = publishViaAPI(topic_subs, sensorData, 1);    //mqtt publish to EMQX Serverless API
           
           String transcriptionPreview = transcribed_text;
           transcriptionPreview.replace("\n", " ");
@@ -264,20 +264,13 @@ void loop() {
           if (!waitForMqttAckReady(1500)) {
             Serial.println(">>> WARNING: ACK listener not ready yet");
           }
-
-          // if (sensorPublished) {
-          //   Serial.println(">>> Sensor data published successfully.");
-          // } else {
-          //   Serial.println(">>> Failed to publish sensor data.");
-          // }
-
           if (fcmSent) {
             Serial.println(">>> Bullying alert push notification sent successfully.");
           } else {
             Serial.println(">>> Failed to send bullying alert push notification.");
           }
 
-          blinkLed13(5, 100);
+          blinkLed13(5, 500);
 
         } else {
           Serial.println(">>> No bullying behavior detected.");
