@@ -11,8 +11,6 @@ extern WebServer server;
 extern int led;
 extern bool wifi_connected;
 
-
-// EEPROM addresses
 #define EEPROM_SSID_ADDR 0
 #define EEPROM_PASS_ADDR 32
 #define EEPROM_SIZE 128
@@ -91,7 +89,6 @@ void handleSave() {
   String ssid = server.arg("ssid");
   String pass = server.arg("pass");
   
-  // Save to EEPROM
   EEPROM.begin(EEPROM_SIZE);
   ssid.toCharArray((char*)EEPROM.getDataPtr() + EEPROM_SSID_ADDR, 32);
   pass.toCharArray((char*)EEPROM.getDataPtr() + EEPROM_PASS_ADDR, 32);
@@ -106,16 +103,13 @@ void handleSave() {
 void handleReset() {
   Serial.println("Resetting WiFi credentials...");
   
-  
-  // Clear EEPROM
-  EEPROM.begin(EEPROM_SIZE);
+    EEPROM.begin(EEPROM_SIZE);
   for (int i = 0; i < EEPROM_SIZE; i++) {
     EEPROM.write(i, 0);
   }
   EEPROM.commit();
   EEPROM.end();
   
-  // Disconnect from WiFi
   WiFi.disconnect();
   
   String html = "<h1>Reset Complete!</h1>";
@@ -130,11 +124,9 @@ void handleReset() {
 }
 
 void handleNotFound() {
-  // Log the requested URL for debugging
   Serial.print("Request for: ");
   Serial.println(server.uri());
   
-  // Redirect captive portal requests to root
   server.sendHeader("Location", "http://192.168.4.1/");
   server.send(302, "text/plain", "");
 }

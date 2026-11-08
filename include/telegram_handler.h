@@ -24,7 +24,6 @@ void teleBegin(){
     bot.sendMessage(chatID, "ESP32 Bot is now online!");
 }
 
-// Send audio file to Telegram
 bool send_audio_to_telegram() {
   if (WiFi.status() != WL_CONNECTED) {
     Serial.println("ERROR: WiFi not connected. Cannot send to Telegram.");
@@ -49,7 +48,6 @@ bool send_audio_to_telegram() {
 
   http.setTimeout(30000);
 
-  // Build multipart form data
   String boundary = "----TelegramBoundary123456789";
   http.addHeader("Content-Type", "multipart/form-data; boundary=" + boundary);
 
@@ -70,19 +68,14 @@ bool send_audio_to_telegram() {
   Serial.printf("Total request size: %d bytes\n", total_size);
   Serial.printf("Free heap: %d bytes\n", ESP.getFreeHeap());
 
-  // Check if we can reuse the audio buffer
   if (total_size > 110000) {
     Serial.println("ERROR: Request exceeds buffer size!");
     http.end();
     return false;
   }
 
-  // REUSE audio_buffer - shift audio data to make room for headers
-  // Move audio data forward to make space for body_start
   memmove(audio_buffer + start_len, audio_buffer, audio_buffer_size);
-  // Copy header at the beginning
   memcpy(audio_buffer, body_start.c_str(), start_len);
-  // Copy footer at the end
   memcpy(audio_buffer + start_len + audio_buffer_size, body_end.c_str(), end_len);
 
   Serial.println("Sending HTTP POST request to Telegram...");
@@ -101,7 +94,6 @@ bool send_audio_to_telegram() {
   }
 }
 
-// Step 4: Send audio to Telegram (called from main.cpp)
 void backup_audio_to_telegram() {
   Serial.println("\n>>> STEP 4: Backing up audio to Telegram...");
   

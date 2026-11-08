@@ -8,7 +8,6 @@
 #include "chatgpt_handler.h"
 #include "audio_recorder.h"
 
-// OpenAI Whisper API Configuration
 extern const char* openai_api_key;
 extern const char* openai_whisper_url;
 extern const char* whisper_model;
@@ -21,7 +20,6 @@ extern String transcription;
 
 bool parse_whisper_response(const String& response);
 
-// Validate audio and WiFi status
 bool validate_audio_and_wifi() {
   if (WiFi.status() != WL_CONNECTED) {
     Serial.println("ERROR: WiFi not connected");
@@ -41,7 +39,6 @@ bool validate_audio_and_wifi() {
   return true;
 }
 
-// Build multipart form data
 size_t build_multipart_request(size_t payload_size, String& boundary, String& body_start, String& body_end) {
   boundary = "----WebKitFormBoundary7MA4YWxkTrZu0gW";
   
@@ -66,7 +63,6 @@ size_t build_multipart_request(size_t payload_size, String& boundary, String& bo
   return total_size;
 }
 
-// Prepare request buffer
 bool prepare_request_buffer(const String& body_start, const String& body_end, size_t total_size) {
   Serial.printf("Reusing audio buffer for complete request: %d bytes\n", total_size);
   Serial.printf("Free heap: %d bytes\n", ESP.getFreeHeap());
@@ -86,7 +82,6 @@ bool prepare_request_buffer(const String& body_start, const String& body_end, si
   return true;
 }
 
-// Parse Whisper API response
 bool parse_whisper_response(const String& response) {
   Serial.println(">>> HTTP 200 OK - Parsing response...");
   
@@ -112,7 +107,6 @@ bool parse_whisper_response(const String& response) {
   }
 }
 
-// Send to OpenAI Whisper API
 void send_to_openai_whisper() {
   if (!validate_audio_and_wifi()) {
     return;
@@ -165,7 +159,6 @@ void send_to_openai_whisper() {
   http.end();
 }
 
-// Clean up audio buffer
 void cleanup_audio_buffer() {
   if (audio_buffer != nullptr) {
     free(audio_buffer);
@@ -175,9 +168,7 @@ void cleanup_audio_buffer() {
   }
 }
 
-// MAIN WORKFLOW FUNCTIONS (Called from main.cpp)
 
-// Step 2: Convert recorded audio to text using Whisper API
 String convert_audio_to_text() {
   Serial.println("\n>>> STEP 2: Converting audio to text with Whisper API...");
   
@@ -193,7 +184,6 @@ String convert_audio_to_text() {
   }
 }
 
-// Step 4: Free audio memory
 void free_audio_memory() {
   Serial.println("\n>>> STEP 3: Cleaning up audio buffer...");
   cleanup_audio_buffer();

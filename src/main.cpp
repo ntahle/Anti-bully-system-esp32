@@ -25,6 +25,9 @@ int pb = 8;
 const int ledBlink = 5;
 const int bell = 7;
 
+const int bellActiveLevel = LOW;
+const int bellInactiveLevel = HIGH;
+
 const unsigned long micTriggerCooldownMs = 10000;
 unsigned long lastMicTriggerTime = 0;
 
@@ -58,6 +61,7 @@ const char* mqtt_password = SECRET_MQTT_PASSWORD;
 const char* topic_subs = "testtopic/esp32";
 const char* topic_status = "testtopic/esp32/status";
 const char* topic_ack = "testtopic/acknowledgment";
+const char* topic_alert = "testtopic/esp32/alert";
 
 const char* fcm_api_url = SECRET_FCM_API_URL;
 const char* fcm_device_token = SECRET_FCM_DEVICE_TOKEN;
@@ -96,26 +100,68 @@ unsigned long lastStatusPublish = 0;
 void blinkLed13(int times, int delayMs) {
   for (int i = 0; i < times; i++) {
     digitalWrite(ledBlink, HIGH);
-    digitalWrite(bell, LOW);
     delay(delayMs);
     digitalWrite(ledBlink, LOW);
-    digitalWrite(bell, HIGH);
     delay(delayMs);
   }
+}
+
+bool bellRinging = false;
+bool bellOutputOn = false;
+unsigned long bellRingStart = 0;
+unsigned long bellLastToggle = 0;
+
+const unsigned long bellOnMs = 10000;
+const unsigned long bellOffMs = 10000;      
+const unsigned long bellMaxRingMs = 60000;
+
+void bellWriteOutput(bool on) {
+  digitalWrite(bell, on ? bellActiveLevel : bellInactiveLevel);
+  bellOutputOn = on;
+}
+
+void bellOn() {
+  bellWriteOutput(true);
+  bellRinging = true;
+  bellRingStart = millis();
+  bellLastToggle = millis();
+}
+
+void bellOff() {
+  bellWriteOutput(false);
+  bellRinging = false;
+}
+
+void serviceBellPattern() {
+  if (!bellRinging) {
+    return;
+  }
+
+  unsigned long stepMs = bellOutputOn ? bellOnMs : bellOffMs;
+  if (millis() - bellLastToggle < stepMs) {
+    return;
+  }
+
+  bellLastToggle = millis();
+  bellWriteOutput(!bellOutputOn);
+  Serial.print(">>> Bell pattern: ");
+  Serial.println(bellOutputOn ? "ON" : "OFF");
 }
 
 
 
 void setup() {
+
+  digitalWrite(bell, bellInactiveLevel);
+  pinMode(bell, OUTPUT);
+
   Serial.begin(115200);
 
   pinMode(led, OUTPUT);
   pinMode(ledBlink, OUTPUT); 
-  pinMode(bell, OUTPUT); 
   pinMode(pb, INPUT);
   
-  digitalWrite(led, HIGH);
-  digitalWrite(bell, HIGH);
+  bellWriteOutput(false);
    
   EEPROM.begin(EEPROM_SIZE);
 
@@ -155,9 +201,8 @@ void setup() {
 
 void loop() {
   server.handleClient();
-  bool pbState = (digitalRead(pb) == HIGH); // Assuming HIGH means pressed, adjust if needed
+  bool pbState = (digitalRead(pb) == HIGH);
 
-  // Detect a debounced double-click on pb and publish a connectivity test message.
   if (pbState != lastPbState && (millis() - lastPbDebounceTime) > pbDebounceMs) {
     lastPbDebounceTime = millis();
     lastPbState = pbState;
@@ -197,8 +242,17 @@ void loop() {
   serviceMqttAck();
   if (consumeAcknowledgedPressed()) {
     Serial.println("acknowledged pressed");
-    blinkLed13(2, 200);
+    bellOff();
+    i2s_zero_dma_buffer(i2s_port);  
+    blinkLed13(2, 200);   
   }
+
+  if (bellRinging && bellMaxRingMs > 0 && millis() - bellRingStart >= bellMaxRingMs) {
+    Serial.println(">>> Bell ring timeout reached, silencing bell");
+    bellOff();
+  }
+
+  serviceBellPattern(); 
 
   if (WiFi.status() == WL_CONNECTED && millis() - lastStatusPublish >= 2000) {
     publishEsp32Status("online");
@@ -219,69 +273,75 @@ void loop() {
     pbResetHandled = false;
   }
 
-  bool micTriggered = detect_microphone_activity();
-  // if (micTriggered && (millis() - lastMicTriggerTime >= micTriggerCooldownMs)) { // system triggered by INMP441
-  if (WiFi.status() == WL_CONNECTED && micTriggered && (millis() - lastMicTriggerTime >= micTriggerCooldownMs)) { // system triggered by INMP441
-    lastMicTriggerTime = millis();
-    
-    Serial.println("\n========================================");
-    Serial.println(">>> Microphone activity detected, starting workflow");
-    digitalWrite(ledBlink, HIGH); 
-    pauseMqttAck();
-
-    record_audio_from_microphone();
-    
-    String transcribed_text = convert_audio_to_text(); 
-    free_audio_memory();
-    
-    // Step 3: Analyze text
-    if (transcribed_text.length() > 0) {
-      String analysis_result = analyze_text_with_chatgpt(transcribed_text);
+  if (!bellRinging) {
+    bool micTriggered = detect_microphone_activity();
+    if (WiFi.status() == WL_CONNECTED && micTriggered && (millis() - lastMicTriggerTime >= micTriggerCooldownMs)) {
+      lastMicTriggerTime = millis();
       
-      if (analysis_result.length() > 0) {
-        String analysis_label = extractAnalysisLabel(analysis_result);
-        printAnalysisResultPretty(analysis_result);
-        if (analysis_label == "yes") {
-          
-          Serial.println("\n\n>>> ALERT: Bullying behavior detected!");
-          bot.sendMessage(chatID, "ALERT: Bullying behavior detected in the latest transcription:\n\n\"" + transcribed_text + "\"\n\nAnalysis: " + analysis_result);
-          
-          String sensorData = buildSensorPayload(transcribed_text, analysis_result);
-          
-          String transcriptionPreview = transcribed_text;
-          transcriptionPreview.replace("\n", " ");
-          if (transcriptionPreview.length() > 120) {
-            transcriptionPreview = transcriptionPreview.substring(0, 120) + "...";
-          }
-          String alertBody = "ALERT: Bullying behavior detected";
-          if (transcriptionPreview.length() > 0) {
-            alertBody += " - \"" + transcriptionPreview + "\"";
-          }
-          bool fcmSent = sendFcmNotification(alertBody, "alert", "Bullying Alert Detected", sensorData);
-
-          // Reconnect ACK subscriber immediately so app acknowledgments are less likely to be missed.
-          resumeMqttAck();
-          if (!waitForMqttAckReady(1500)) {
-            Serial.println(">>> WARNING: ACK listener not ready yet");
-          }
-          if (fcmSent) {
-            Serial.println(">>> Bullying alert push notification sent successfully.");
+      Serial.println("\n========================================");
+      Serial.println(">>> Microphone activity detected, starting workflow");
+      digitalWrite(ledBlink, HIGH); 
+      pauseMqttAck();
+  
+      record_audio_from_microphone();
+      
+      String transcribed_text = convert_audio_to_text(); 
+      free_audio_memory();
+      
+      if (transcribed_text.length() > 0) {
+        String analysis_result = analyze_text_with_chatgpt(transcribed_text);
+        
+        if (analysis_result.length() > 0) {
+          String analysis_label = extractAnalysisLabel(analysis_result);
+          printAnalysisResultPretty(analysis_result);
+          if (analysis_label == "yes") {
+            
+            Serial.println("\n\n>>> ALERT: Bullying behavior detected!");
+            bot.sendMessage(chatID, "ALERT: Bullying behavior detected in the latest transcription:\n\n\"" + transcribed_text + "\"\n\nAnalysis: " + analysis_result);
+            
+            String sensorData = buildSensorPayload(transcribed_text, analysis_result);
+            
+            String transcriptionPreview = transcribed_text;
+            transcriptionPreview.replace("\n", " ");
+            if (transcriptionPreview.length() > 120) {
+              transcriptionPreview = transcriptionPreview.substring(0, 120) + "...";
+            }
+            String alertBody = "ALERT: Bullying behavior detected";
+            if (transcriptionPreview.length() > 0) {
+              alertBody += " - \"" + transcriptionPreview + "\"";
+            }
+            bool fcmSent = sendFcmNotification(alertBody, "alert", "Bullying Alert Detected", sensorData);
+            bool mqttAlertSent = publishAlert("Bullying Alert Detected", alertBody, sensorData);
+  
+            resumeMqttAck();
+            bellOn();
+            
+            if (!waitForMqttAckReady(1500)) {
+              Serial.println(">>> WARNING: ACK listener not ready yet");
+            }
+            if (fcmSent) {
+              Serial.println(">>> Bullying alert push notification sent successfully.");
+            } else {
+              Serial.println(">>> Failed to send bullying alert push notification.");
+            }
+            if (mqttAlertSent) {
+              Serial.println(">>> Bullying alert published to MQTT successfully.");
+            } else {
+              Serial.println(">>> Failed to publish bullying alert to MQTT.");
+            }
+  
+  
           } else {
-            Serial.println(">>> Failed to send bullying alert push notification.");
+            Serial.println(">>> No bullying behavior detected.");
           }
-
-          blinkLed13(5, 500);
-
-        } else {
-          Serial.println(">>> No bullying behavior detected.");
         }
+      } else {
+        Serial.println(">>> Skipping ChatGPT analysis - No transcription available");
       }
-    } else {
-      Serial.println(">>> Skipping ChatGPT analysis - No transcription available");
+  
+      resumeMqttAck();
+      digitalWrite(ledBlink, LOW); 
     }
-
-    resumeMqttAck();
-    digitalWrite(ledBlink, LOW); 
   }
   delay(50);
   

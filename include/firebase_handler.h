@@ -11,7 +11,6 @@ extern const char* fcm_device_token;
 
 extern const char* firebase_token_url;
 
-// Function to fetch the latest FCM auth bearer token from the API
 String getFcmAuthBearer() {
   if (WiFi.status() != WL_CONNECTED) {
     Serial.println(">>> FCM token fetch: WiFi not connected");
@@ -38,7 +37,6 @@ String getFcmAuthBearer() {
     return "";
   }
 
-  // Parse JSON response to extract token
   JsonDocument doc;
   DeserializationError err = deserializeJson(doc, response);
   
@@ -70,7 +68,6 @@ bool sendFcmNotification(const String& messageBody, const String& notificationTy
     return false;
   }
 
-  // Fetch the latest auth bearer token before sending notification
   String fcm_auth_bearer = getFcmAuthBearer();
   if (fcm_auth_bearer.length() == 0) {
     Serial.println(">>> FCM skipped: failed to get auth bearer token");

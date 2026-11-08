@@ -16,7 +16,6 @@ extern String chatgpt_token;
 String extractAnalysisLabel(String analysis_result) {
   analysis_result.trim();
 
-  // Prefer extracting the explicit JSON label field first.
   int labelKey = analysis_result.indexOf("\"label\"");
   if (labelKey >= 0) {
     int colonPos = analysis_result.indexOf(':', labelKey);
@@ -30,7 +29,6 @@ String extractAnalysisLabel(String analysis_result) {
     }
   }
 
-  // Fallback for plain-text responses.
   String lower = analysis_result;
   lower.toLowerCase();
   if (lower.indexOf("yes") >= 0) return "yes";
@@ -49,7 +47,6 @@ String buildSensorPayload(const String& transcription_text, const String& analys
   if (!analysisErr) {
     outerDoc["analysis"] = analysisDoc.as<JsonVariant>();
   } else {
-    // Fallback to plain text if model returns non-JSON output.
     outerDoc["analysis"] = analysis_result;
   }
 
@@ -84,13 +81,11 @@ void printAnalysisResultPretty(const String& analysis_result) {
     return;
   }
 
-  // Fallback for non-JSON responses.
   Serial.println(analysis_result);
 }
 
 String parseChatGPTResponse(String response, int httpResponseCode) {
   Serial.println("Response Code: " + String(httpResponseCode));
-  //Serial.println("Full Response: " + response);  // Debug: see entire response
 
   DynamicJsonDocument doc(2048);
   DeserializationError error = deserializeJson(doc, response);
@@ -110,7 +105,6 @@ String parseChatGPTResponse(String response, int httpResponseCode) {
     return "";
   }
 
-  // Navigate through the JSON structure: choices[0].message.content
   if (doc.containsKey("choices") && doc["choices"].is<JsonArray>()) {
     JsonArray choices = doc["choices"];
     if (choices.size() > 0) {
@@ -143,7 +137,6 @@ String sendToChatGPT(String message) {
   Serial.println("Message: " + message);
   Serial.printf("Free heap before ChatGPT HTTPS: %u bytes\n", ESP.getFreeHeap());
 
-  // Build JSON with ArduinoJson so quotes/newlines are escaped safely.
   DynamicJsonDocument payloadDoc(2048);
   payloadDoc["model"] = chatgpt_model;
   payloadDoc["max_tokens"] = chatgpt_token.toInt();
@@ -185,7 +178,6 @@ String sendToChatGPT(String message) {
   return contentResponse;
 }
 
-// Main function to analyze text for bullying behavior
 String analyze_text_with_chatgpt(String text) {
   Serial.println("\n>>> STEP 4: Analyzing text with ChatGPT...");
   String analysis_result = sendToChatGPT(text);

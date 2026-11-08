@@ -1,6 +1,5 @@
 #pragma once
 
-// Copy this file to include/secrets.h and fill in real values locally.
 #define SECRET_OPENAI_API_KEY "REPLACE_WITH_OPENAI_API_KEY"
 #define SECRET_TELEGRAM_BOT_TOKEN "REPLACE_WITH_TELEGRAM_BOT_TOKEN"
 #define SECRET_TELEGRAM_CHAT_ID "REPLACE_WITH_TELEGRAM_CHAT_ID"

@@ -6,7 +6,6 @@
 #include "esp_heap_caps.h"
 #include "wav_generator.h"
 
-// Audio Configuration
 #define SAMPLE_RATE 16000U
 #define SAMPLE_BITS 16
 #define VOLUME_GAIN 3
@@ -16,22 +15,18 @@
 #define MAX_RECORD_TIME_SECONDS 15
 #define MIC_TRIGGER_P2P_THRESHOLD 7000
 
-// I2S Configuration for INMP441
 #define I2S_NUM I2S_NUM_0
 #define I2S_SCK GPIO_NUM_13
 #define I2S_WS GPIO_NUM_12
 #define I2S_DIN GPIO_NUM_11
 #define BUTTON_PIN 1
 
-
-// Global variables
 extern i2s_port_t i2s_port;
 extern bool recording_active;
 extern uint8_t* audio_buffer;
 extern size_t audio_buffer_size;
-const uint32_t rtime = 15;  // Fixed 15-second recording (~480KB buffer)
+const uint32_t rtime = 15;
 
-// I2S Initialization for INMP441
 bool init_i2s_inmp441() {
   Serial.println("Initializing I2S for INMP441...");
   
@@ -80,7 +75,6 @@ void deinit_i2s() {
   }
 }
 
-// Quick sound activity check to trigger recording from INMP441 without PIR.
 bool detect_microphone_activity(uint16_t p2pThreshold = MIC_TRIGGER_P2P_THRESHOLD, uint32_t listenMs = 120) {
   uint8_t read_buffer[AUDIO_READ_CHUNK_SIZE];
   unsigned long start = millis();
@@ -115,7 +109,6 @@ bool detect_microphone_activity(uint16_t p2pThreshold = MIC_TRIGGER_P2P_THRESHOL
 }
 
 
-// Record WAV to RAM
 void record_wav_to_ram() {
   Serial.printf("Free heap before allocation: %d bytes\n", ESP.getFreeHeap());
   Serial.printf("Free PSRAM: %d bytes\n", ESP.getFreePsram());
@@ -147,7 +140,7 @@ void record_wav_to_ram() {
   recording_active = true;
   size_t total_bytes = WAV_HEADER_SIZE;
   unsigned long startTime = millis();
-  const uint32_t max_record_time = rtime;  // Fixed 4-second recording (~130KB buffer)
+  const uint32_t max_record_time = rtime;
   float hpf_prev_input = 0.0f;
   float hpf_prev_output = 0.0f;
 
@@ -170,7 +163,6 @@ void record_wav_to_ram() {
       break;
     }
 
-    // Apply high-pass filter (remove low-frequency rumble/DC) then gain
     for (size_t i = 0; i < bytes_read; i += 2) {
       int16_t* sample = (int16_t*)&read_buffer[i];
       float input = (float)(*sample);
@@ -200,7 +192,6 @@ void record_wav_to_ram() {
 
   audio_buffer_size = total_bytes;
 
-  // Analyze audio amplitude
   int16_t max_amplitude = 0;
   int16_t min_amplitude = 0;
   for (size_t i = WAV_HEADER_SIZE; i < total_bytes; i += 2) {
@@ -217,7 +208,6 @@ void record_wav_to_ram() {
 }
 
 
-// Step 1: Record audio from microphone
 void record_audio_from_microphone() {
   Serial.println("\n>>> STEP 1: Recording audio from microphone...");
   record_wav_to_ram();

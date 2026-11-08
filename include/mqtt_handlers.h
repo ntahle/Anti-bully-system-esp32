@@ -17,6 +17,7 @@ extern const char* mqtt_username;
 extern const char* mqtt_password;
 extern const char* topic_status;
 extern const char* topic_ack;
+extern const char* topic_alert;
 
 WiFiClientSecure mqtt_tls_client;
 PubSubClient mqtt_client(mqtt_tls_client);
@@ -183,25 +184,20 @@ String jsonEscape(const String& input) {
 bool publishViaAPI(String topic, String payload, int qos = 0, bool verbose = true) {
   if (WiFi.status() != WL_CONNECTED) return false;
   
-  // Create secure client for HTTPS
   WiFiClientSecure client;
-  client.setInsecure();  // Skip SSL certificate verification (for testing)
+  client.setInsecure();
   
   HTTPClient http;
   
-  // EMQX Serverless API endpoint for publishing
   String url = String(emqx_api) + "/publish";
-  http.begin(client, url);  // Pass the secure client
+  http.begin(client, url);
   
-  // Set headers
   http.addHeader("Content-Type", "application/json");
   
-  // Use App ID and Secret for authentication
   String auth = String(app_id) + ":" + String(app_secret);
   String authBase64 = base64::encode((uint8_t*)auth.c_str(), auth.length());
   http.addHeader("Authorization", "Basic " + authBase64);
   
-  // Escape dynamic fields so nested JSON/text remains valid in request body.
   String escapedTopic = jsonEscape(topic);
   String escapedPayload = jsonEscape(payload);
   String jsonPayload = "{\"topic\":\"" + escapedTopic + "\",\"payload\":\"" + escapedPayload + "\",\"qos\":" + String(qos) + ",\"retain\":false}";
@@ -234,6 +230,35 @@ void publishEsp32Status(const char* state) {
   String statusPayload;
   serializeJson(statusDoc, statusPayload);
   publishViaAPI(topic_status, statusPayload, 0, false);
+}
+
+bool publishAlert(const String& notificationTitle, const String& notificationBody, const String& mqttPayloadJson = "", int qos = 1) {
+  JsonDocument alertDoc;
+  alertDoc["source"] = "esp32";
+  alertDoc["type"] = "alert";
+  alertDoc["title"] = notificationTitle;
+  alertDoc["message"] = notificationBody;
+  alertDoc["timestamp_ms"] = millis();
+
+  if (mqttPayloadJson.length() > 0) {
+    JsonDocument mqttDoc;
+    DeserializationError err = deserializeJson(mqttDoc, mqttPayloadJson);
+    if (!err && mqttDoc.is<JsonObject>()) {
+      if (!mqttDoc["transcription"].isNull()) {
+        alertDoc["transcription"] = mqttDoc["transcription"];
+      }
+
+      if (!mqttDoc["analysis"].isNull()) {
+        alertDoc["analysis"] = mqttDoc["analysis"];
+      }
+    } else {
+      alertDoc["mqtt_payload"] = mqttPayloadJson;
+    }
+  }
+
+  String alertPayload;
+  serializeJson(alertDoc, alertPayload);
+  return publishViaAPI(topic_alert, alertPayload, qos, false);
 }
 
 #endif  // MQTT_HANDLERS_H
