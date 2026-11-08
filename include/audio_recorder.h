@@ -295,4 +295,19 @@ void record_audio_from_microphone() {
   }
 }
 
+// Releases the recording buffer so the next capture starts from a clean PSRAM state.
+void cleanup_audio_buffer() {
+  if (audio_buffer != nullptr) {
+    free(audio_buffer);
+    audio_buffer = nullptr;
+    audio_buffer_size = 0;
+    Serial.println(">>> Audio buffer freed - RAM available for next recording\n");
+  }
+}
+
+void free_audio_memory() {
+  Serial.println("\n>>> STEP 3: Cleaning up audio buffer...");
+  cleanup_audio_buffer();
+}
+
 #endif

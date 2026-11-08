@@ -10,10 +10,9 @@
 #include "esp_heap_caps.h"
 
 // One-shot audio analysis (WAV in -> analysis JSON out).
-// Replaces the two-step flow (convert_audio_to_text + analyze_text_with_chatgpt)
-// by sending the recorded WAV straight to an audio-input chat model in a single
-// /v1/chat/completions request.
-// Set SINGLE_PIPELINE_AUDIO_MODEL=0 in platformio.ini to fall back to two steps.
+// Sends the recorded WAV straight to an audio-input chat model in a single
+// /v1/chat/completions request: transcription and classification come back together,
+// so no separate speech-to-text call is needed.
 //
 // Validated against the live API with a 16 kHz / 16-bit / mono WAV (same format as
 // the ESP32 recordings), same system prompt as chatgpt_handler.h:
@@ -22,10 +21,6 @@
 //             {"label":"yes","confidence":95,"reasons":[...],"transcript":"..."}
 //   usage   : 5.4 s of audio = 53 audio tokens (~10 tokens per second of audio),
 //             285 text tokens, 56 completion tokens, ~5 s round trip
-
-#ifndef SINGLE_PIPELINE_AUDIO_MODEL
-#define SINGLE_PIPELINE_AUDIO_MODEL 1
-#endif
 
 extern const char* openai_api_key;
 extern const char* openai_gpt_url;

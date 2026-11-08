@@ -6,9 +6,8 @@
 #include <ArduinoJson.h>
 #include <HTTPClient.h>
 #include "handlers.h" //wifi config handlers
-#include "chatgpt_handler.h" //chatgpt analyser
+#include "chatgpt_handler.h" //analysis label/category parsing + alert payload helpers
 #include "audio_recorder.h" //mic 
-#include "openai_whisper.h" //speech to text
 #include "audio_analysis.h" //one-shot WAV -> analysis (gpt-audio-1.5)
 #include "wav_generator.h" //generate wav file in RAM
 #include "telegram_handler.h" //telegram bot notification
@@ -44,12 +43,8 @@ const unsigned long pbDoubleClickWindowMs = 1500;
 
 
 const char* openai_api_key = SECRET_OPENAI_API_KEY;
-const char* openai_whisper_url = "https://api.openai.com/v1/audio/transcriptions";
-const char* whisper_model = "gpt-4o-transcribe-diarize";
 const char* openai_gpt_url = "https://api.openai.com/v1/chat/completions";
-String chatgpt_model = "gpt-4o-mini";
-String chatgpt_token = "100";
-String audio_model = "gpt-audio-1.5"; //audio-input chat model for the single-request pipeline
+String audio_model = "gpt-audio-1.5"; //audio-input chat model: single-request WAV -> analysis pipeline
 
 
 const char* botToken = SECRET_TELEGRAM_BOT_TOKEN;
@@ -97,8 +92,6 @@ WiFiClientSecure client;
 
 i2s_port_t i2s_port = I2S_NUM_0;
 bool wifi_connected = false;
-String last_transcription = "";
-String transcription = "";
 bool isPressed = false;
 uint8_t* audio_buffer = nullptr;
 size_t audio_buffer_size = 0;
@@ -294,8 +287,7 @@ void loop() {
   
       record_audio_from_microphone();
 
-#if SINGLE_PIPELINE_AUDIO_MODEL
-      // Single request: recorded WAV -> analysis JSON (transcript comes back in the same response)
+      // Single request: recorded WAV -> analysis JSON (the transcript comes back in the same response)
       String analysis_result = analyze_wav_with_audio_model();
       free_audio_memory();
 
@@ -306,16 +298,6 @@ void loop() {
           transcribed_text = analysis_doc["transcript"].as<String>();
         }
       }
-#else
-      // Two separate requests: speech to text, then text analysis
-      String transcribed_text = convert_audio_to_text();
-      free_audio_memory();
-
-      String analysis_result = "";
-      if (transcribed_text.length() > 0) {
-        analysis_result = analyze_text_with_chatgpt(transcribed_text);
-      }
-#endif
 
       if (analysis_result.length() > 0) {
         String analysis_label = extractAnalysisLabel(analysis_result);
