@@ -8,11 +8,19 @@
 
 #define SAMPLE_RATE 16000U
 #define SAMPLE_BITS 16
-#define VOLUME_GAIN 3
+// Digital boost applied while recording. The INMP441 already delivers high levels (raw
+// peaks reach ~26000 on loud speech), so any fixed shift saturates: <<3 clipped
+// everything above |4096|, <<2 still clips above |16383|, turning speech into a square
+// wave before it ever reaches the model. Leveling is applied once after recording
+// instead (log_and_normalize_recorded_audio), which never introduces clipping.
+#define VOLUME_GAIN 0
+#define AUDIO_NORMALIZE_TARGET_PEAK 26200   // ~80% of int16 full scale
+#define AUDIO_NORMALIZE_MAX_GAIN 8.0f       // never amplify more than this
+#define AUDIO_NORMALIZE_MIN_PEAK 300        // below this the clip counts as silence
 #define HPF_ALPHA 0.97f
 #define MAX_AUDIO_SIZE 500000
 #define AUDIO_READ_CHUNK_SIZE 512
-#define MAX_RECORD_TIME_SECONDS 15
+#define MAX_RECORD_TIME_SECONDS 10
 #define MIC_TRIGGER_P2P_THRESHOLD 7000
 
 #define I2S_NUM I2S_NUM_0
@@ -25,7 +33,7 @@ extern i2s_port_t i2s_port;
 extern bool recording_active;
 extern uint8_t* audio_buffer;
 extern size_t audio_buffer_size;
-const uint32_t rtime = 15;
+const uint32_t rtime = 10;
 
 bool init_i2s_inmp441() {
   Serial.println("Initializing I2S for INMP441...");
@@ -109,6 +117,72 @@ bool detect_microphone_activity(uint16_t p2pThreshold = MIC_TRIGGER_P2P_THRESHOL
 }
 
 
+// Reports how loud the recorded clip actually is, then scales it so the loudest sample
+// sits near full scale. This replaces the old fixed digital boost, so loud shouting is
+// never clipped into a square wave, while quiet recordings still get lifted.
+void log_and_normalize_recorded_audio(size_t data_offset, size_t total_bytes) {
+  if (!audio_buffer || total_bytes <= data_offset + 1) {
+    return;
+  }
+
+  int16_t* samples = (int16_t*)&audio_buffer[data_offset];
+  const size_t sample_count = (total_bytes - data_offset) / 2;
+  int32_t peak = 0;
+  size_t full_scale_samples = 0;
+
+  Serial.print(">>> Per-second RMS:");
+  double sum_squares = 0.0;
+  size_t samples_in_second = 0;
+
+  for (size_t i = 0; i < sample_count; i++) {
+    int32_t sample = samples[i];
+    int32_t magnitude = sample < 0 ? -sample : sample;
+    if (magnitude > peak) {
+      peak = magnitude;
+    }
+    if (magnitude >= 32767) {
+      full_scale_samples++;
+    }
+    sum_squares += (double)sample * (double)sample;
+    samples_in_second++;
+
+    if (samples_in_second == SAMPLE_RATE || i + 1 == sample_count) {
+      Serial.printf(" %d", (int)sqrt(sum_squares / samples_in_second));
+      sum_squares = 0.0;
+      samples_in_second = 0;
+    }
+  }
+  Serial.println();
+
+  Serial.printf(">>> Clip peak=%ld, samples at full scale=%u (%.2f%%)\n",
+                (long)peak, (unsigned)full_scale_samples,
+                100.0f * (float)full_scale_samples / (float)sample_count);
+
+  if (peak < AUDIO_NORMALIZE_MIN_PEAK) {
+    Serial.println(">>> Recording is near silent - skipping normalization");
+    return;
+  }
+  if (peak >= AUDIO_NORMALIZE_TARGET_PEAK) {
+    Serial.println(">>> Level already optimal - skipping normalization");
+    return;
+  }
+
+  float gain = (float)AUDIO_NORMALIZE_TARGET_PEAK / (float)peak;
+  if (gain > AUDIO_NORMALIZE_MAX_GAIN) {
+    gain = AUDIO_NORMALIZE_MAX_GAIN;
+  }
+
+  for (size_t i = 0; i < sample_count; i++) {
+    int32_t scaled = (int32_t)((float)samples[i] * gain);
+    if (scaled > 32767) scaled = 32767;
+    if (scaled < -32768) scaled = -32768;
+    samples[i] = (int16_t)scaled;
+  }
+
+  Serial.printf(">>> Normalized quiet recording: gain x%.2f (peak %ld -> %d)\n",
+                gain, (long)peak, (int)((float)peak * gain));
+}
+
 void record_wav_to_ram() {
   Serial.printf("Free heap before allocation: %d bytes\n", ESP.getFreeHeap());
   Serial.printf("Free PSRAM: %d bytes\n", ESP.getFreePsram());
@@ -191,6 +265,8 @@ void record_wav_to_ram() {
   memcpy(audio_buffer, wav_header, WAV_HEADER_SIZE);
 
   audio_buffer_size = total_bytes;
+
+  log_and_normalize_recorded_audio(WAV_HEADER_SIZE, audio_buffer_size);
 
   int16_t max_amplitude = 0;
   int16_t min_amplitude = 0;

@@ -37,12 +37,45 @@ String extractAnalysisLabel(String analysis_result) {
   return lower;
 }
 
+// Human readable alert wording for a detected category. The default keeps the original
+// bullying wording so existing notifications stay unchanged.
+String buildAlertHeadline(const String& category) {
+  if (category == "sexual_harassment") return "Sexual harassment detected";
+  if (category == "sexual_violence") return "Sexual violence or rape detected";
+  if (category == "other_safety") return "Safety concern detected";
+  return "Bullying behavior detected";
+}
+
+String buildAlertTitle(const String& category) {
+  if (category == "sexual_harassment") return "Sexual Harassment Alert Detected";
+  if (category == "sexual_violence") return "Sexual Violence Alert Detected";
+  if (category == "other_safety") return "Safety Alert Detected";
+  return "Bullying Alert Detected";
+}
+
+String extractAnalysisCategory(const String& analysis_result) {
+  int categoryKey = analysis_result.indexOf("\"category\"");
+  if (categoryKey >= 0) {
+    int colonPos = analysis_result.indexOf(':', categoryKey);
+    int firstQuotePos = analysis_result.indexOf('"', colonPos + 1);
+    int secondQuotePos = analysis_result.indexOf('"', firstQuotePos + 1);
+
+    if (colonPos >= 0 && firstQuotePos >= 0 && secondQuotePos > firstQuotePos) {
+      String category = analysis_result.substring(firstQuotePos + 1, secondQuotePos);
+      category.toLowerCase();
+      return category;
+    }
+  }
+
+  return "";
+}
+
 String buildSensorPayload(const String& transcription_text, const String& analysis_result) {
-  DynamicJsonDocument outerDoc(1024);
+  DynamicJsonDocument outerDoc(1536);
   outerDoc["message"] = "Alert at Fukuyama Dorm DML114 L1";
   outerDoc["transcription"] = transcription_text;
 
-  DynamicJsonDocument analysisDoc(768);
+  DynamicJsonDocument analysisDoc(1024);
   DeserializationError analysisErr = deserializeJson(analysisDoc, analysis_result);
   if (!analysisErr) {
     outerDoc["analysis"] = analysisDoc.as<JsonVariant>();
@@ -56,17 +89,28 @@ String buildSensorPayload(const String& transcription_text, const String& analys
 }
 
 void printAnalysisResultPretty(const String& analysis_result) {
-  DynamicJsonDocument analysisDoc(768);
+  DynamicJsonDocument analysisDoc(1024);
   DeserializationError err = deserializeJson(analysisDoc, analysis_result);
 
-  Serial.println("\n\n>>> Bully Analysis Result:");
+  Serial.println("\n\n>>> Safety Analysis Result:");
   if (!err && analysisDoc.is<JsonObject>()) {
     String label = analysisDoc["label"] | "unknown";
     int confidence = analysisDoc["confidence"] | -1;
 
     Serial.println("- label: " + label);
+    String category = analysisDoc["category"] | "";
+    if (category.length() > 0 && category != "none") {
+      Serial.println("- category: " + category);
+    }
     if (confidence >= 0) {
       Serial.println("- confidence: " + String(confidence));
+    }
+
+    if (analysisDoc["transcript"].is<const char*>()) {
+      String transcript = analysisDoc["transcript"].as<String>();
+      if (transcript.length() > 0) {
+        Serial.println("- transcript: \"" + transcript + "\"");
+      }
     }
 
     if (analysisDoc["reasons"].is<JsonArray>()) {

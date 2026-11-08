@@ -9,6 +9,7 @@
 #include "chatgpt_handler.h" //chatgpt analyser
 #include "audio_recorder.h" //mic 
 #include "openai_whisper.h" //speech to text
+#include "audio_analysis.h" //one-shot WAV -> analysis (gpt-audio-1.5)
 #include "wav_generator.h" //generate wav file in RAM
 #include "telegram_handler.h" //telegram bot notification
 #include "UniversalTelegramBot.h"
@@ -48,6 +49,7 @@ const char* whisper_model = "gpt-4o-transcribe-diarize";
 const char* openai_gpt_url = "https://api.openai.com/v1/chat/completions";
 String chatgpt_model = "gpt-4o-mini";
 String chatgpt_token = "100";
+String audio_model = "gpt-audio-1.5"; //audio-input chat model for the single-request pipeline
 
 
 const char* botToken = SECRET_TELEGRAM_BOT_TOKEN;
@@ -67,20 +69,27 @@ const char* fcm_api_url = SECRET_FCM_API_URL;
 const char* fcm_device_token = SECRET_FCM_DEVICE_TOKEN;
 const char* firebase_token_url = "https://vmc-api.edxapay.com/firebase-show";
 
-String chatgpt_system_prompt = R"PROMPT(You are a school safety triage classifier in Malaysia's school in elementary and secondary levels.
-Task: classify whether the student text indicates immediate help-seeking or probability which lead to possible bully incidents which related to bullying, threat, fear, coercion, harassment, or violence.
+String chatgpt_system_prompt = R"PROMPT(You are a school safety triage classifier for elementary and secondary schools in Malaysia.
+Task: decide whether the speech in the audio shows that a student needs immediate help or is exposed to bullying, threat, fear, coercion, harassment, sexual harassment, sexual assault or other violence, and name the category.
+
 Return JSON only with keys:
 - label: one of ["yes","no","uncertain"]
+- category: one of ["bullying","sexual_harassment","sexual_violence","other_safety","none"]
 - confidence: integer 0-100
 - reasons: array of up to 3 short phrases
+- transcript: verbatim transcript of what was said in the audio, empty string if nothing intelligible
 
 Rules:
-- "yes" if there is direct request for help, fear of harm, threat, coercion, repeated harassment, or urgent distress.
-- "no" if casual talk, jokes, unrelated school chatter, or unclear context without distress.
-- "uncertain" if transcription is noisy, incomplete, contradictory, or too short.
-- Be strict: do not over-trigger.
-- the conversation may contain slang, misspellings, or informal language common among students. Consider these in your analysis.
-- the conversation may in english or a mix of english, Malay and local language. Focus on the meaning rather than specific words.
+- "yes" if there is a direct request for help, fear of harm, threat, coercion, repeated harassment, unwanted sexual attention or touching, any sexual act done to the student without consent, or urgent distress.
+- category = the most serious issue present. If sexual and bullying elements appear together, use "sexual_harassment" or "sexual_violence", not "bullying".
+- sexual_harassment: unwanted sexual comments, jokes, gestures, messages, images, exposure, or touching without penetration. This is "yes" even when the students sound casual, embarrassed, or are laughing it off.
+- Treat unwanted physical contact as sexual_harassment even when no sexual words are used: touching, grabbing, groping, rubbing, cornering, forced kissing or hugging (pegang, raba, gesel, cium, peluk paksa), unless it is clearly accidental or a normal part of sports or medical care.
+- sexual_violence: rape, attempted rape, molestation, forced or coerced sexual contact, or any sexual act involving a minor. Always "yes" with confidence 90 or above.
+- Never dismiss sexual content because it is described with slang or euphemism, or because the student talks about someone else in the third person. Words such as rogol, kacau, usik, pegang, paksa or similar Malay terms count.
+- "no" if casual talk, jokes, teasing, or unrelated school chatter with no distress and no sexual content.
+- "uncertain" if the transcription is noisy, incomplete, contradictory, or too short to judge.
+- Be strict about harmless chatter: do not over-trigger on ordinary teasing.
+- The speech may be English, Malay, or a mix; focus on the meaning rather than specific words.
 - Do not include any text outside JSON.)PROMPT";
 
 WebServer server(80);
@@ -284,59 +293,78 @@ void loop() {
       pauseMqttAck();
   
       record_audio_from_microphone();
-      
-      String transcribed_text = convert_audio_to_text(); 
+
+#if SINGLE_PIPELINE_AUDIO_MODEL
+      // Single request: recorded WAV -> analysis JSON (transcript comes back in the same response)
+      String analysis_result = analyze_wav_with_audio_model();
       free_audio_memory();
-      
+
+      String transcribed_text = "";
+      if (analysis_result.length() > 0) {
+        JsonDocument analysis_doc;
+        if (deserializeJson(analysis_doc, analysis_result) == DeserializationError::Ok) {
+          transcribed_text = analysis_doc["transcript"].as<String>();
+        }
+      }
+#else
+      // Two separate requests: speech to text, then text analysis
+      String transcribed_text = convert_audio_to_text();
+      free_audio_memory();
+
+      String analysis_result = "";
       if (transcribed_text.length() > 0) {
-        String analysis_result = analyze_text_with_chatgpt(transcribed_text);
-        
-        if (analysis_result.length() > 0) {
-          String analysis_label = extractAnalysisLabel(analysis_result);
-          printAnalysisResultPretty(analysis_result);
-          if (analysis_label == "yes") {
-            
-            Serial.println("\n\n>>> ALERT: Bullying behavior detected!");
-            bot.sendMessage(chatID, "ALERT: Bullying behavior detected in the latest transcription:\n\n\"" + transcribed_text + "\"\n\nAnalysis: " + analysis_result);
-            
-            String sensorData = buildSensorPayload(transcribed_text, analysis_result);
-            
-            String transcriptionPreview = transcribed_text;
-            transcriptionPreview.replace("\n", " ");
-            if (transcriptionPreview.length() > 120) {
-              transcriptionPreview = transcriptionPreview.substring(0, 120) + "...";
-            }
-            String alertBody = "ALERT: Bullying behavior detected";
-            if (transcriptionPreview.length() > 0) {
-              alertBody += " - \"" + transcriptionPreview + "\"";
-            }
-            bool fcmSent = sendFcmNotification(alertBody, "alert", "Bullying Alert Detected", sensorData);
-            bool mqttAlertSent = publishAlert("Bullying Alert Detected", alertBody, sensorData);
-  
-            resumeMqttAck();
-            bellOn();
-            
-            if (!waitForMqttAckReady(1500)) {
-              Serial.println(">>> WARNING: ACK listener not ready yet");
-            }
-            if (fcmSent) {
-              Serial.println(">>> Bullying alert push notification sent successfully.");
-            } else {
-              Serial.println(">>> Failed to send bullying alert push notification.");
-            }
-            if (mqttAlertSent) {
-              Serial.println(">>> Bullying alert published to MQTT successfully.");
-            } else {
-              Serial.println(">>> Failed to publish bullying alert to MQTT.");
-            }
-  
-  
-          } else {
-            Serial.println(">>> No bullying behavior detected.");
+        analysis_result = analyze_text_with_chatgpt(transcribed_text);
+      }
+#endif
+
+      if (analysis_result.length() > 0) {
+        String analysis_label = extractAnalysisLabel(analysis_result);
+        String analysis_category = extractAnalysisCategory(analysis_result);
+        String alert_headline = buildAlertHeadline(analysis_category);
+        String alert_title = buildAlertTitle(analysis_category);
+        printAnalysisResultPretty(analysis_result);
+        if (analysis_label == "yes") {
+          
+          Serial.println("\n\n>>> ALERT: " + alert_headline + "!");
+          bot.sendMessage(chatID, "ALERT: " + alert_headline + " in the latest transcription:\n\n\"" + transcribed_text + "\"\n\nAnalysis: " + analysis_result);
+          
+          String sensorData = buildSensorPayload(transcribed_text, analysis_result);
+          
+          String transcriptionPreview = transcribed_text;
+          transcriptionPreview.replace("\n", " ");
+          if (transcriptionPreview.length() > 120) {
+            transcriptionPreview = transcriptionPreview.substring(0, 120) + "...";
           }
+          String alertBody = "ALERT: " + alert_headline;
+          if (transcriptionPreview.length() > 0) {
+            alertBody += " - \"" + transcriptionPreview + "\"";
+          }
+          bool fcmSent = sendFcmNotification(alertBody, "alert", alert_title, sensorData);
+          bool mqttAlertSent = publishAlert(alert_title, alertBody, sensorData);
+
+          resumeMqttAck();
+          bellOn();
+          
+          if (!waitForMqttAckReady(1500)) {
+            Serial.println(">>> WARNING: ACK listener not ready yet");
+          }
+          if (fcmSent) {
+            Serial.println(">>> " + alert_headline + " - push notification sent.");
+          } else {
+            Serial.println(">>> Failed to send alert push notification.");
+          }
+          if (mqttAlertSent) {
+            Serial.println(">>> " + alert_headline + " - published to MQTT.");
+          } else {
+            Serial.println(">>> Failed to publish alert to MQTT.");
+          }
+
+
+        } else {
+          Serial.println(">>> No bullying, harassment or violence detected.");
         }
       } else {
-        Serial.println(">>> Skipping ChatGPT analysis - No transcription available");
+        Serial.println(">>> Skipping analysis - no analysis result available");
       }
   
       resumeMqttAck();
