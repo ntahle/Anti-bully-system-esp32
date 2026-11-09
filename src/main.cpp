@@ -85,6 +85,7 @@ Rules:
 - "uncertain" if the transcription is noisy, incomplete, contradictory, or too short to judge.
 - Be strict about harmless chatter: do not over-trigger on ordinary teasing.
 - The speech may be English, Malay, or a mix; focus on the meaning rather than specific words.
+- Try to understand the tone, neglect if it maybe sarcastic, joking, or playful tone, but if the student sounds scared, anxious, or upset, treat it as "yes".
 - Do not include any text outside JSON.)PROMPT";
 
 WebServer server(80);
