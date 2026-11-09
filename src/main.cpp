@@ -71,7 +71,7 @@ Return JSON only with keys:
 - label: one of ["yes","no","uncertain"]
 - category: one of ["bullying","sexual_harassment","sexual_violence","other_safety","none"]
 - confidence: integer 0-100
-- reasons: array of up to 3 short phrases
+- reasons: array of up to 3 short phrases including the tone
 - transcript: verbatim transcript of what was said in the audio, empty string if nothing intelligible
 
 Rules:
